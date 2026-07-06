@@ -103,6 +103,7 @@ def forecast_metric_from_series(
             "history": ordered.to_dict(orient="records"),
             "forecast": prediction_records,
             "confidence": 0.3,
+            "model_confidence": 0.3,
             "model_scores": {},
         }
 
@@ -138,6 +139,7 @@ def forecast_metric_from_series(
         "history": ordered.to_dict(orient="records"),
         "forecast": prediction_records,
         "confidence": float(confidence),
+        "model_confidence": float(confidence),
         "model_scores": model_scores,
     }
 

@@ -40,6 +40,49 @@ def build_confidence_assessment(
     }
 
 
+def combine_forecast_confidence_assessment(
+    heuristic_assessment: Mapping[str, object],
+    model_confidence: float,
+    model_weight: float = 0.6,
+    heuristic_weight: float = 0.4,
+) -> dict:
+    """Combine forecast model confidence with the existing heuristic confidence."""
+    heuristic_score = _clamp(float(heuristic_assessment.get("score", 0.0)))
+    bounded_model_confidence = _clamp(float(model_confidence))
+    total_weight = float(model_weight + heuristic_weight)
+    if total_weight <= 0:
+        raise ValueError("Forecast confidence weights must sum to a positive value.")
+
+    combined_score = _clamp(
+        (
+            (bounded_model_confidence * model_weight)
+            + (heuristic_score * heuristic_weight)
+        )
+        / total_weight
+    )
+
+    heuristic_reason = str(heuristic_assessment.get("reason", "")).strip()
+    if bounded_model_confidence <= heuristic_score:
+        reason = "Confidence is most sensitive to the forecast model fit over the available history."
+    else:
+        reason = heuristic_reason or "Confidence is supported by the underlying trade data and network context."
+
+    components = {
+        "model_confidence": bounded_model_confidence,
+        "heuristic_confidence": heuristic_score,
+    }
+    heuristic_components = heuristic_assessment.get("components", {})
+    if isinstance(heuristic_components, Mapping):
+        for component_name, component_score in heuristic_components.items():
+            components[f"heuristic_{component_name}"] = _clamp(float(component_score))
+
+    return {
+        "score": combined_score,
+        "reason": reason,
+        "components": components,
+    }
+
+
 
 def data_completeness_score(data_quality: Optional[Mapping[str, float]]) -> tuple[float, str]:
     """Score completeness using required-field availability and quantity availability."""

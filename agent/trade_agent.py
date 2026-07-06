@@ -8,7 +8,7 @@ from typing import List
 import networkx as nx
 import pandas as pd
 
-from core.confidence import build_confidence_assessment
+from core.confidence import build_confidence_assessment, combine_forecast_confidence_assessment
 from core.data_loader import (
     is_baci_directory,
     latest_year,
@@ -212,11 +212,15 @@ def _execute_forecast_query(data_path: str, query: dict, sector: str) -> List[di
     latest_snapshot_year = latest_year(data_path)
     latest_snapshot_data = load_trade_data(data_path, year=latest_snapshot_year, sector=sector)
     latest_graph = build_trade_graph(latest_snapshot_data, sector=sector)
-    confidence = build_confidence_assessment(
+    heuristic_confidence = build_confidence_assessment(
         data_quality=time_series_payload.get("data_quality"),
         graph=latest_graph,
         country=resolved_country,
         propagation_steps=1,
+    )
+    confidence = combine_forecast_confidence_assessment(
+        heuristic_assessment=heuristic_confidence,
+        model_confidence=float(forecast_result.get("model_confidence", forecast_result.get("confidence", 0.0))),
     )
 
     forecast_values = [
@@ -267,6 +271,10 @@ def _execute_forecast_query(data_path: str, query: dict, sector: str) -> List[di
     insight["sector"] = sector
     insight["method"] = forecast_result["method"]
     insight["forecast_model_scores"] = forecast_result.get("model_scores", {})
+    insight["model_confidence"] = float(
+        forecast_result.get("model_confidence", forecast_result.get("confidence", 0.0))
+    )
+    insight["heuristic_confidence"] = float(heuristic_confidence["score"])
     insight["confidence_reason"] = confidence["reason"]
     insight["confidence_components"] = confidence["components"]
     return [insight]
