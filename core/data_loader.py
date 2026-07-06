@@ -18,6 +18,7 @@ from core.sector_mapper import (
 REQUIRED_COLUMNS = ("exporter", "importer", "year", "trade_value")
 BACI_FILE_GLOB = "BACI_HS92_Y*_V*.csv"
 BACI_CHUNKSIZE = 250_000
+BACI_YEAR_CACHE: dict[tuple[str, int, str], pd.DataFrame] = {}
 
 
 
@@ -158,6 +159,11 @@ def load_baci_year(directory: str | Path, year: int, sector: Optional[str] = "al
     """Load and aggregate a single BACI year to country-country trade flows."""
     dataset_dir = Path(directory)
     selected_sector = normalize_sector(sector)
+    cache_key = (str(dataset_dir.resolve()), int(year), selected_sector)
+    cached = BACI_YEAR_CACHE.get(cache_key)
+    if cached is not None:
+        return cached.copy(deep=True)
+
     file_path = _find_baci_file(dataset_dir, int(year))
     partial_frames = []
     quality_stats = _quality_stats_template()
@@ -199,7 +205,8 @@ def load_baci_year(directory: str | Path, year: int, sector: Optional[str] = "al
     cleaned = clean_trade_data(normalized)
     cleaned.attrs["data_quality"] = _finalize_quality_stats(quality_stats)
     cleaned.attrs["sector"] = selected_sector
-    return cleaned
+    BACI_YEAR_CACHE[cache_key] = cleaned.copy(deep=True)
+    return cleaned.copy(deep=True)
 
 
 
@@ -211,34 +218,33 @@ def load_baci_country_time_series(
     """Build a country time series by scanning BACI yearly files on demand."""
     dataset_dir = Path(directory)
     selected_sector = normalize_sector(sector)
-    country_code, country_name = resolve_baci_country(dataset_dir, country)
+    _, country_name = resolve_baci_country(dataset_dir, country)
     records = []
     quality_stats = _quality_stats_template()
 
     for year in available_years(dataset_dir):
-        file_path = _find_baci_file(dataset_dir, year)
-        total_imports = 0.0
-        total_exports = 0.0
-        usecols = ["i", "j", "v", "q"] if selected_sector == "all" else ["i", "j", "k", "v", "q"]
-        dtypes = {"i": "int32", "j": "int32", "v": "float64", "q": "float64"}
-        if selected_sector != "all":
-            dtypes["k"] = "int32"
+        year_data = load_baci_year(dataset_dir, year, sector=selected_sector)
+        year_quality = year_data.attrs.get("data_quality")
+        if year_quality:
+            row_count = int(year_quality.get("row_count", 0))
+            quality_stats["row_count"] += row_count
+            quality_stats["required_complete_count"] += int(
+                float(year_quality.get("required_field_availability", 0.0)) * row_count
+            )
+            quality_stats["value_present_count"] += int(
+                float(year_quality.get("value_availability", 0.0)) * row_count
+            )
+            if bool(year_quality.get("quantity_observed", False)):
+                quality_stats["quantity_observed"] = True
+                quantity_availability = year_quality.get("quantity_availability")
+                if quantity_availability is not None:
+                    quality_stats["quantity_present_count"] += int(float(quantity_availability) * row_count)
 
-        for chunk in pd.read_csv(file_path, usecols=usecols, dtype=dtypes, chunksize=BACI_CHUNKSIZE):
-            working = chunk
-            if selected_sector != "all":
-                working = chunk.loc[baci_sector_mask(chunk["k"], selected_sector), ["i", "j", "v", "q"]]
-                if working.empty:
-                    continue
-
-            relevant = working[(working["i"] == country_code) | (working["j"] == country_code)].copy()
-            if relevant.empty:
-                continue
-
-            _update_quality_stats(quality_stats, relevant, required_columns=["i", "j", "v"], quantity_column="q")
-            total_exports += float(relevant.loc[relevant["i"] == country_code, "v"].sum())
-            total_imports += float(relevant.loc[relevant["j"] == country_code, "v"].sum())
-
+        relevant = year_data[
+            (year_data["exporter"] == country_name) | (year_data["importer"] == country_name)
+        ].copy()
+        total_exports = float(relevant.loc[relevant["exporter"] == country_name, "trade_value"].sum())
+        total_imports = float(relevant.loc[relevant["importer"] == country_name, "trade_value"].sum())
         trade_total = total_imports + total_exports
         records.append(
             {
