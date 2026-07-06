@@ -707,6 +707,21 @@
                         </div>
                     </fieldset>
 
+                    <div id="shock-options" class="inline-grid hidden">
+                        <div class="field">
+                            <label for="steps">Propagation steps</label>
+                            <input id="steps" name="steps" type="number" min="1" max="10" value="3" />
+                        </div>
+                        <div class="field">
+                            <label for="top-n-partners">Top trade partners</label>
+                            <input id="top-n-partners" name="top_n_partners" type="number" min="1" max="10" value="3" />
+                        </div>
+                        <div class="field">
+                            <label for="propagation-factor">Propagation factor</label>
+                            <input id="propagation-factor" name="propagation_factor" type="number" min="0" max="1" step="0.05" value="0.7" />
+                        </div>
+                    </div>
+
                     <div id="forecast-options" class="inline-grid hidden">
                         <div class="field">
                             <label for="metric">Forecast metric</label>
@@ -881,12 +896,16 @@
         const limitInput = document.getElementById("limit");
         const severityInput = document.getElementById("severity");
         const severityValue = document.getElementById("severity-value");
+        const stepsInput = document.getElementById("steps");
+        const topNPartnersInput = document.getElementById("top-n-partners");
+        const propagationFactorInput = document.getElementById("propagation-factor");
         const metricInput = document.getElementById("metric");
         const periodsInput = document.getElementById("periods");
         const forecastModelInput = document.getElementById("forecast-model");
         const yearWrapper = document.getElementById("year-wrapper");
         const limitWrapper = document.getElementById("limit-wrapper");
         const severityWrapper = document.getElementById("severity-wrapper");
+        const shockOptions = document.getElementById("shock-options");
         const forecastOptions = document.getElementById("forecast-options");
         const formHint = document.getElementById("form-hint");
         const runButton = document.getElementById("run-button");
@@ -1011,11 +1030,15 @@
             yearWrapper.classList.toggle("hidden", isForecast);
             limitWrapper.classList.toggle("hidden", isForecast);
             severityWrapper.classList.toggle("hidden", !isShock);
+            shockOptions.classList.toggle("hidden", !isShock);
             forecastOptions.classList.toggle("hidden", !isForecast);
 
             yearInput.disabled = isForecast;
             limitInput.disabled = isForecast;
             severityInput.disabled = !isShock;
+            stepsInput.disabled = !isShock;
+            topNPartnersInput.disabled = !isShock;
+            propagationFactorInput.disabled = !isShock;
             metricInput.disabled = !isForecast;
             periodsInput.disabled = !isForecast;
             forecastModelInput.disabled = !isForecast;
@@ -1639,7 +1662,12 @@
             if (country) payload.country = country;
             if (!isForecast && yearInput.value) payload.year = Number(yearInput.value);
             if (!isForecast && limitInput.value) payload.limit = Number(limitInput.value);
-            if (isShock) payload.severity = Number(severityInput.value);
+            if (isShock) {
+                payload.severity = Number(severityInput.value);
+                payload.steps = Number(stepsInput.value);
+                payload.top_n_partners = Number(topNPartnersInput.value);
+                payload.propagation_factor = Number(propagationFactorInput.value);
+            }
             if (isForecast) {
                 payload.metric = metricInput.value;
                 payload.periods = Number(periodsInput.value);

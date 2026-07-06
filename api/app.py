@@ -26,8 +26,9 @@ class TradeQuery(BaseModel):
     metric: Optional[Literal["imports", "exports"]] = None
     forecast_model: Optional[Literal["auto", "linear", "arima", "hybrid"]] = None
     periods: Optional[int] = Field(default=None, ge=1, le=10)
-    top_n_partners: Optional[int] = Field(default=None, ge=1, le=10)
-    propagation_factor: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    steps: Optional[int] = Field(default=3, ge=1, le=10)
+    top_n_partners: Optional[int] = Field(default=3, ge=1, le=10)
+    propagation_factor: Optional[float] = Field(default=0.7, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def validate_by_query_type(self) -> "TradeQuery":
