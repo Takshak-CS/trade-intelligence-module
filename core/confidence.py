@@ -85,14 +85,15 @@ def combine_forecast_confidence_assessment(
 
 
 def data_completeness_score(data_quality: Optional[Mapping[str, float]]) -> tuple[float, str]:
-    """Score completeness using required-field availability and quantity availability."""
+    """Score completeness using required-field, value, and quantity availability."""
     if not data_quality:
         return 1.0, "Confidence is supported by complete trade records in the selected slice."
 
     required_availability = float(data_quality.get("required_field_availability", 1.0))
+    value_availability = float(data_quality.get("value_availability", 1.0))
     quantity_availability = data_quality.get("quantity_availability")
 
-    components = [required_availability]
+    components = [required_availability, value_availability]
     if quantity_availability is not None:
         components.append(float(quantity_availability))
 
