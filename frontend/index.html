@@ -1,0 +1,1741 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trade Graph Intelligence Dashboard</title>
+    <style>
+        :root {
+            --bg: #edf3f8;
+            --bg-soft: #f7fafc;
+            --card: rgba(255, 255, 255, 0.92);
+            --card-strong: #ffffff;
+            --text: #16212d;
+            --muted: #66758a;
+            --border: #d8e2ec;
+            --accent: #2563eb;
+            --accent-soft: #e7efff;
+            --accent-ink: #1746a2;
+            --teal: #0f8b8d;
+            --teal-soft: #dff5f3;
+            --warn: #dd6b20;
+            --danger: #c24141;
+            --success: #1f8f63;
+            --shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+            --radius: 22px;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(37, 99, 235, 0.16), transparent 30%),
+                radial-gradient(circle at bottom right, rgba(15, 139, 141, 0.12), transparent 28%),
+                linear-gradient(180deg, #eef4f9 0%, #e7eef6 100%);
+        }
+
+        .dashboard {
+            width: min(1380px, calc(100% - 32px));
+            margin: 24px auto 32px;
+            display: grid;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid rgba(216, 226, 236, 0.92);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(10px);
+        }
+
+        .topbar {
+            padding: 28px;
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .eyebrow {
+            margin: 0 0 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            font-size: 0.76rem;
+            font-weight: 800;
+            color: var(--accent);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: clamp(2rem, 4vw, 3.2rem);
+            line-height: 0.98;
+            letter-spacing: -0.03em;
+            max-width: 12ch;
+            font-family: Georgia, "Times New Roman", serif;
+        }
+
+        .subtitle {
+            margin: 14px 0 0;
+            max-width: 72ch;
+            color: var(--muted);
+            line-height: 1.65;
+        }
+
+        .topbar-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+            max-width: 420px;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent-ink);
+            font-size: 0.84rem;
+            font-weight: 700;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(310px, 360px) 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+
+        .control-panel {
+            padding: 22px;
+            position: sticky;
+            top: 20px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .section-title {
+            margin: 4px 0 0;
+            font-size: 1.28rem;
+            font-family: Georgia, "Times New Roman", serif;
+        }
+
+        .section-copy {
+            margin: 4px 0 0;
+            color: var(--muted);
+            font-size: 0.92rem;
+            line-height: 1.55;
+        }
+
+        .control-form {
+            display: grid;
+            gap: 16px;
+        }
+
+        .field {
+            display: grid;
+            gap: 8px;
+        }
+
+        .field label,
+        .field legend {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .fieldset {
+            margin: 0;
+            padding: 0;
+            border: 0;
+            display: grid;
+            gap: 8px;
+        }
+
+        .inline-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+
+        input,
+        select,
+        button,
+        textarea {
+            width: 100%;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.96);
+            color: var(--text);
+            font: inherit;
+        }
+
+        input,
+        select {
+            padding: 12px 14px;
+            transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+        }
+
+        input:focus,
+        select:focus,
+        button:focus {
+            outline: none;
+            border-color: rgba(37, 99, 235, 0.5);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+        }
+
+        input:disabled,
+        select:disabled {
+            background: #f3f6f9;
+            color: #8d99aa;
+            cursor: not-allowed;
+        }
+
+        .slider-wrap {
+            display: grid;
+            gap: 10px;
+        }
+
+        input[type="range"] {
+            padding: 0;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .slider-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+
+        .slider-value {
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent-ink);
+            font-weight: 700;
+        }
+
+        .helper-note {
+            margin: 0;
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(15, 139, 141, 0.08));
+            color: var(--muted);
+            line-height: 1.55;
+            font-size: 0.9rem;
+        }
+
+        .run-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border: 0;
+            background: linear-gradient(135deg, #2563eb, #3b82f6 55%, #0f8b8d);
+            color: #f8fbff;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+            box-shadow: 0 18px 30px rgba(37, 99, 235, 0.22);
+            cursor: pointer;
+            transition: transform 120ms ease, box-shadow 120ms ease;
+        }
+
+        .run-button:hover { transform: translateY(-1px); }
+        .run-button:disabled { cursor: wait; opacity: 0.86; transform: none; }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            border-top-color: #ffffff;
+            animation: spin 0.9s linear infinite;
+        }
+
+        .hidden { display: none !important; }
+
+        .results-shell {
+            display: grid;
+            gap: 18px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: rgba(22, 33, 45, 0.06);
+            color: var(--muted);
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
+        .status-pill.success { background: rgba(31, 143, 99, 0.12); color: var(--success); }
+        .status-pill.error { background: rgba(194, 65, 65, 0.12); color: var(--danger); }
+        .status-pill.loading { background: rgba(37, 99, 235, 0.12); color: var(--accent-ink); }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.85;
+        }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .metric-card {
+            padding: 18px;
+            border-radius: 20px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 251, 255, 0.95));
+            border: 1px solid rgba(216, 226, 236, 0.95);
+        }
+
+        .metric-label {
+            color: var(--muted);
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 800;
+        }
+
+        .metric-value {
+            margin-top: 10px;
+            font-size: 1.55rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+        }
+
+        .metric-detail {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 0.86rem;
+            line-height: 1.45;
+        }
+
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+        }
+
+        .chart-card,
+        .table-card,
+        .summary-card,
+        .json-card,
+        .graph-card {
+            padding: 20px;
+        }
+
+        .card-title {
+            margin: 0;
+            font-size: 1.06rem;
+            font-weight: 800;
+        }
+
+        .card-subtitle {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .chart-wrap {
+            position: relative;
+            height: 320px;
+            min-height: 320px;
+            margin-top: 18px;
+        }
+
+        .chart-wrap canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .empty-state {
+            display: grid;
+            place-items: center;
+            min-height: 180px;
+            padding: 18px;
+            border: 1px dashed rgba(216, 226, 236, 0.98);
+            border-radius: 18px;
+            background: linear-gradient(180deg, rgba(249, 251, 253, 0.95), rgba(243, 247, 250, 0.95));
+            color: var(--muted);
+            text-align: center;
+            line-height: 1.55;
+        }
+
+        .result-panels {
+            display: grid;
+            grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+            gap: 18px;
+        }
+
+        .side-stack {
+            display: grid;
+            gap: 18px;
+        }
+
+        .table-scroll {
+            margin-top: 18px;
+            overflow: auto;
+            border-radius: 18px;
+            border: 1px solid rgba(216, 226, 236, 0.95);
+            background: #ffffff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead { background: #f6f9fc; }
+
+        th,
+        td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid rgba(216, 226, 236, 0.82);
+            vertical-align: top;
+        }
+
+        th {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+        }
+
+        tbody tr:hover { background: rgba(37, 99, 235, 0.04); }
+        td { font-size: 0.94rem; line-height: 1.55; }
+
+        .score-pill,
+        .confidence-pill,
+        .trend-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 88px;
+            padding: 7px 10px;
+            border-radius: 999px;
+            font-size: 0.84rem;
+            font-weight: 800;
+        }
+
+        .score-pill { background: var(--accent-soft); color: var(--accent-ink); }
+        .confidence-pill { background: var(--teal-soft); color: #0a5e60; }
+        .trend-pill { background: rgba(221, 107, 32, 0.12); color: var(--warn); text-transform: capitalize; }
+
+        .summary-list {
+            margin-top: 18px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .summary-item {
+            padding: 14px 15px;
+            border-radius: 18px;
+            background: linear-gradient(180deg, rgba(249, 251, 253, 0.96), rgba(243, 247, 250, 0.96));
+            border: 1px solid rgba(216, 226, 236, 0.95);
+        }
+
+        .summary-item strong {
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .summary-item p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.6;
+            font-size: 0.92rem;
+        }
+
+        .json-output {
+            margin: 18px 0 0;
+            padding: 16px;
+            border-radius: 18px;
+            background: #0f1723;
+            color: #e8eef7;
+            overflow: auto;
+            min-height: 220px;
+            font-size: 0.88rem;
+            line-height: 1.55;
+        }
+
+        .graph-card { display: grid; gap: 16px; }
+
+        .graph-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .graph-meta { color: var(--muted); font-size: 0.9rem; }
+
+        .toggle-group {
+            display: inline-flex;
+            gap: 8px;
+            padding: 6px;
+            border-radius: 999px;
+            background: rgba(22, 33, 45, 0.06);
+        }
+
+        .toggle-button {
+            width: auto;
+            border: 0;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: transparent;
+            color: var(--muted);
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .toggle-button.active {
+            background: linear-gradient(135deg, #1f6feb, #0f8b8d);
+            color: #f8fbff;
+            box-shadow: none;
+        }
+
+        .toggle-button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .graph-stage {
+            position: relative;
+            min-height: 620px;
+            border-radius: 22px;
+            overflow: hidden;
+            border: 1px solid rgba(216, 226, 236, 0.95);
+            background:
+                radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32%),
+                radial-gradient(circle at bottom right, rgba(15, 139, 141, 0.1), transparent 28%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(244, 248, 251, 0.98));
+        }
+
+        #network-svg {
+            width: 100%;
+            height: 620px;
+            display: block;
+        }
+
+        .legend {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .legend-line {
+            width: 22px;
+            height: 4px;
+            border-radius: 999px;
+        }
+
+        .graph-note {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.88rem;
+            line-height: 1.55;
+        }
+
+        .tooltip {
+            position: fixed;
+            z-index: 1000;
+            pointer-events: none;
+            max-width: 280px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            background: rgba(15, 23, 35, 0.96);
+            color: #f5f8fb;
+            font-size: 0.86rem;
+            line-height: 1.45;
+            box-shadow: 0 16px 32px rgba(15, 23, 35, 0.28);
+            opacity: 0;
+            transition: opacity 120ms ease;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 1180px) {
+            .metric-grid,
+            .chart-grid,
+            .result-panels {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 980px) {
+            .layout { grid-template-columns: 1fr; }
+            .control-panel { position: static; }
+            .topbar { padding: 22px; }
+            .graph-toolbar,
+            .section-header { align-items: flex-start; flex-direction: column; }
+        }
+
+        @media (max-width: 720px) {
+            .dashboard { width: min(100%, calc(100% - 20px)); margin-top: 12px; }
+            .inline-grid { grid-template-columns: 1fr; }
+            .metric-grid { grid-template-columns: 1fr 1fr; }
+            .chart-wrap { height: 280px; min-height: 280px; }
+            #network-svg { height: 520px; }
+            .graph-stage { min-height: 520px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="dashboard">
+        <header class="card topbar">
+            <div>
+                <p class="eyebrow">Trade Graph Intelligence</p>
+                <h1>Analytics dashboard for trade risk, shocks, and forecasts.</h1>
+                <p class="subtitle">
+                    Filter by sector, run country-level disruption scenarios, compare confidence, and present the
+                    trade network in a clean demo-ready interface.
+                </p>
+            </div>
+            <div class="topbar-badges">
+                <span class="pill">Risk analysis</span>
+                <span class="pill">Shock simulation</span>
+                <span class="pill">Forecast trends</span>
+                <span class="pill">Interactive network</span>
+            </div>
+        </header>
+
+        <section class="layout">
+            <aside class="card control-panel">
+                <div class="section-header">
+                    <div>
+                        <p class="eyebrow">Controls</p>
+                        <h2 class="section-title">Configure analysis</h2>
+                    </div>
+                </div>
+
+                <form id="query-form" class="control-form">
+                    <div class="field">
+                        <label for="api-url">API URL</label>
+                        <input id="api-url" type="text" value="http://127.0.0.1:8000/query" />
+                    </div>
+
+                    <div class="field">
+                        <label for="query-type">Analysis Type</label>
+                        <select id="query-type" name="query_type">
+                            <option value="risk">Risk</option>
+                            <option value="shock">Shock</option>
+                            <option value="forecast">Forecast</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="country">Country</label>
+                        <input id="country" name="country" type="text" placeholder="China or CHN" />
+                    </div>
+
+                    <div class="field">
+                        <label for="sector">Sector</label>
+                        <select id="sector" name="sector">
+                            <option value="all">All sectors</option>
+                            <option value="energy">Energy</option>
+                            <option value="agriculture">Agriculture</option>
+                            <option value="electronics">Electronics</option>
+                        </select>
+                    </div>
+
+                    <div class="inline-grid">
+                        <div class="field" id="year-wrapper">
+                            <label for="year">Year</label>
+                            <input id="year" name="year" type="number" min="1995" max="2024" value="2020" />
+                        </div>
+                        <div class="field" id="limit-wrapper">
+                            <label for="limit">Limit</label>
+                            <input id="limit" name="limit" type="number" min="1" max="50" value="10" />
+                        </div>
+                    </div>
+
+                    <fieldset class="fieldset field" id="severity-wrapper">
+                        <legend>Shock severity</legend>
+                        <div class="slider-wrap">
+                            <input id="severity" name="severity" type="range" min="0" max="1" step="0.05" value="0.5" />
+                            <div class="slider-meta">
+                                <span>Reduce outgoing exports from the selected country.</span>
+                                <span class="slider-value" id="severity-value">50%</span>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <div id="forecast-options" class="inline-grid hidden">
+                        <div class="field">
+                            <label for="metric">Forecast metric</label>
+                            <select id="metric" name="metric">
+                                <option value="exports">Exports</option>
+                                <option value="imports">Imports</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="periods">Future periods</label>
+                            <input id="periods" name="periods" type="number" min="1" max="10" value="3" />
+                        </div>
+                        <div class="field">
+                            <label for="forecast-model">Forecast model</label>
+                            <select id="forecast-model" name="forecast_model">
+                                <option value="auto">Auto (recommended)</option>
+                                <option value="linear">Linear trend</option>
+                                <option value="arima">ARIMA (1,1,1)</option>
+                                <option value="hybrid">Linear + ARIMA residual</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <p id="form-hint" class="helper-note">
+                        Risk and shock use the selected year snapshot. Forecast runs across the full available history for the chosen country and sector.
+                    </p>
+
+                    <button id="run-button" class="run-button" type="submit">
+                        <span id="run-button-label">Run Analysis</span>
+                        <span id="run-spinner" class="spinner hidden"></span>
+                    </button>
+                </form>
+            </aside>
+
+            <section class="results-shell">
+                <div class="section-header">
+                    <div>
+                        <p class="eyebrow">Results</p>
+                        <h2 class="section-title" id="results-title">Top insights</h2>
+                        <p class="section-copy">Confidence, ranked outcomes, and narrative summaries update after each query.</p>
+                    </div>
+                    <div id="status" class="status-pill"><span class="status-dot"></span><span>Waiting for query</span></div>
+                </div>
+
+                <div class="metric-grid">
+                    <article class="metric-card">
+                        <div class="metric-label">Insight count</div>
+                        <div class="metric-value" id="metric-insight-count">0</div>
+                        <div class="metric-detail">Top rows returned by the current query.</div>
+                    </article>
+                    <article class="metric-card">
+                        <div class="metric-label">Lead country</div>
+                        <div class="metric-value" id="metric-lead-country">None</div>
+                        <div class="metric-detail">Highest-ranked entity in the current result set.</div>
+                    </article>
+                    <article class="metric-card">
+                        <div class="metric-label">Avg confidence</div>
+                        <div class="metric-value" id="metric-avg-confidence">0%</div>
+                        <div class="metric-detail">Mean confidence across displayed insights.</div>
+                    </article>
+                    <article class="metric-card">
+                        <div class="metric-label">Active scope</div>
+                        <div class="metric-value" id="metric-scope">All sectors</div>
+                        <div class="metric-detail">Sector plus selected mode and year context.</div>
+                    </article>
+                </div>
+
+                <div class="chart-grid">
+                    <article class="card chart-card">
+                        <div>
+                            <h3 class="card-title" id="bar-chart-title">Score distribution</h3>
+                            <p class="card-subtitle">Top countries and their current score contribution.</p>
+                        </div>
+                        <div class="chart-wrap">
+                            <canvas id="bar-chart"></canvas>
+                            <div id="bar-chart-empty" class="empty-state">Run a risk or shock query to populate the ranked score chart.</div>
+                        </div>
+                    </article>
+
+                    <article class="card chart-card">
+                        <div>
+                            <h3 class="card-title">Forecast trend</h3>
+                            <p class="card-subtitle">Historical values and future projection for the selected country.</p>
+                        </div>
+                        <div class="chart-wrap">
+                            <canvas id="trend-chart"></canvas>
+                            <div id="trend-chart-empty" class="empty-state">Run a forecast query to render the trend line.</div>
+                        </div>
+                    </article>
+                </div>
+
+                <div class="result-panels">
+                    <article class="card table-card">
+                        <div>
+                            <h3 class="card-title">Ranked results</h3>
+                            <p class="card-subtitle">Scores are formatted as percentages for quick comparison.</p>
+                        </div>
+                        <div id="table-container" class="empty-state" style="margin-top: 18px; min-height: 240px;">
+                            No data available yet. Run an analysis to populate the results table.
+                        </div>
+                    </article>
+
+                    <div class="side-stack">
+                        <article class="card summary-card">
+                            <div>
+                                <h3 class="card-title">Summary insights</h3>
+                                <p class="card-subtitle">Short narrative takeaways from the strongest rows in the response.</p>
+                            </div>
+                            <div id="summary-list" class="summary-list">
+                                <div class="empty-state">Narrative insights will appear here after the first query.</div>
+                            </div>
+                        </article>
+
+                        <article class="card json-card">
+                            <div>
+                                <h3 class="card-title">Raw API response</h3>
+                                <p class="card-subtitle">Useful for demos, debugging, and checking the exact payload.</p>
+                            </div>
+                            <pre id="json-output" class="json-output">{
+  "agent": "trade",
+  "insights": []
+}</pre>
+                        </article>
+                    </div>
+                </div>
+            </section>
+        </section>
+
+        <section class="card graph-card">
+            <div class="section-header">
+                <div>
+                    <p class="eyebrow">Visualization</p>
+                    <h2 class="section-title">Trade network explorer</h2>
+                    <p class="section-copy">Inspect the selected trade snapshot and switch to the affected subnetwork after shock simulations.</p>
+                </div>
+                <div id="graph-status" class="status-pill"><span class="status-dot"></span><span>Loading network</span></div>
+            </div>
+
+            <div class="graph-toolbar">
+                <div id="graph-scope" class="graph-meta">Preparing graph snapshot...</div>
+                <div class="toggle-group">
+                    <button id="full-network-btn" class="toggle-button active" type="button">Show full network</button>
+                    <button id="affected-network-btn" class="toggle-button" type="button" disabled>Show affected network</button>
+                </div>
+            </div>
+
+            <div class="legend">
+                <span class="legend-item"><span class="legend-dot" style="background: rgba(37, 99, 235, 0.92);"></span> country node</span>
+                <span class="legend-item"><span class="legend-dot" style="background: rgba(221, 107, 32, 0.95);"></span> affected country</span>
+                <span class="legend-item"><span class="legend-line" style="background: rgba(37, 99, 235, 0.26);"></span> trade link</span>
+                <span class="legend-item"><span class="legend-line" style="background: rgba(221, 107, 32, 0.4);"></span> affected trade link</span>
+            </div>
+
+            <div class="graph-stage" id="graph-stage">
+                <svg id="network-svg"></svg>
+            </div>
+            <p class="graph-note">Node size reflects total trade in the displayed snapshot. Edge thickness reflects trade value. Hover for details, drag nodes to inspect clusters, and zoom to explore dense regions.</p>
+        </section>
+    </main>
+
+    <div id="graph-tooltip" class="tooltip"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script>
+        const form = document.getElementById("query-form");
+        const apiUrlInput = document.getElementById("api-url");
+        const queryTypeInput = document.getElementById("query-type");
+        const countryInput = document.getElementById("country");
+        const sectorInput = document.getElementById("sector");
+        const yearInput = document.getElementById("year");
+        const limitInput = document.getElementById("limit");
+        const severityInput = document.getElementById("severity");
+        const severityValue = document.getElementById("severity-value");
+        const metricInput = document.getElementById("metric");
+        const periodsInput = document.getElementById("periods");
+        const forecastModelInput = document.getElementById("forecast-model");
+        const yearWrapper = document.getElementById("year-wrapper");
+        const limitWrapper = document.getElementById("limit-wrapper");
+        const severityWrapper = document.getElementById("severity-wrapper");
+        const forecastOptions = document.getElementById("forecast-options");
+        const formHint = document.getElementById("form-hint");
+        const runButton = document.getElementById("run-button");
+        const runButtonLabel = document.getElementById("run-button-label");
+        const runSpinner = document.getElementById("run-spinner");
+        const resultsTitle = document.getElementById("results-title");
+        const statusEl = document.getElementById("status");
+        const metricInsightCountEl = document.getElementById("metric-insight-count");
+        const metricLeadCountryEl = document.getElementById("metric-lead-country");
+        const metricAvgConfidenceEl = document.getElementById("metric-avg-confidence");
+        const metricScopeEl = document.getElementById("metric-scope");
+        const barChartTitleEl = document.getElementById("bar-chart-title");
+        const tableContainer = document.getElementById("table-container");
+        const summaryList = document.getElementById("summary-list");
+        const jsonOutput = document.getElementById("json-output");
+        const barChartCanvas = document.getElementById("bar-chart");
+        const trendChartCanvas = document.getElementById("trend-chart");
+        const barChartEmpty = document.getElementById("bar-chart-empty");
+        const trendChartEmpty = document.getElementById("trend-chart-empty");
+        const graphStatusEl = document.getElementById("graph-status");
+        const graphScopeEl = document.getElementById("graph-scope");
+        const graphStageEl = document.getElementById("graph-stage");
+        const graphSvgEl = document.getElementById("network-svg");
+        const tooltipEl = document.getElementById("graph-tooltip");
+        const fullNetworkBtn = document.getElementById("full-network-btn");
+        const affectedNetworkBtn = document.getElementById("affected-network-btn");
+
+        let latestGraphData = { nodes: [], edges: [], year: null, sector: "all" };
+        let latestShockScores = new Map();
+        let currentGraphMode = "full";
+        let graphLoadToken = 0;
+        let lastResult = { agent: "trade", insights: [] };
+        let barChart = null;
+        let trendChart = null;
+        let resizeTimer = null;
+        const CHART_DPR_CAP = 2.5;
+        const CHART_TEXT_COLOR = "#334155";
+        const CHART_GRID_COLOR = "rgba(203, 213, 225, 0.82)";
+
+        function getChartPixelRatio() {
+            return Math.max(1, Math.min(window.devicePixelRatio || 1, CHART_DPR_CAP));
+        }
+
+        function getCommonChartOptions() {
+            if (typeof Chart !== "undefined") {
+                Chart.defaults.devicePixelRatio = getChartPixelRatio();
+                Chart.defaults.responsive = true;
+                Chart.defaults.maintainAspectRatio = false;
+                Chart.defaults.animation = false;
+                Chart.defaults.color = CHART_TEXT_COLOR;
+                Chart.defaults.font.family = '"Segoe UI", "Trebuchet MS", sans-serif';
+                Chart.defaults.font.size = 12;
+                Chart.defaults.font.weight = "600";
+            }
+
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                devicePixelRatio: getChartPixelRatio(),
+                resizeDelay: 120,
+                animation: false,
+                normalized: true,
+                layout: { padding: { top: 8, right: 12, bottom: 6, left: 6 } },
+                elements: {
+                    bar: { borderSkipped: false },
+                    line: { borderWidth: 3, tension: 0.24, capBezierPoints: true },
+                    point: { radius: 2.5, hoverRadius: 4.5, hitRadius: 10, borderWidth: 2 },
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: CHART_TEXT_COLOR,
+                            font: { size: 12, weight: "600" },
+                            usePointStyle: true,
+                            boxWidth: 12,
+                            boxHeight: 12,
+                        },
+                    },
+                    tooltip: {
+                        backgroundColor: "rgba(15, 23, 42, 0.96)",
+                        titleColor: "#f8fafc",
+                        bodyColor: "#f8fafc",
+                        titleFont: { size: 12, weight: "700" },
+                        bodyFont: { size: 12, weight: "600" },
+                        padding: 12,
+                    },
+                },
+            };
+        }
+
+        function setBadge(element, message, kind = "idle") {
+            element.className = `status-pill${kind === "success" ? " success" : kind === "error" ? " error" : kind === "loading" ? " loading" : ""}`;
+            element.innerHTML = `<span class="status-dot"></span><span>${escapeHtml(message)}</span>`;
+        }
+
+        function setStatus(message, kind = "idle") {
+            setBadge(statusEl, message, kind);
+        }
+
+        function setGraphStatus(message, kind = "idle") {
+            setBadge(graphStatusEl, message, kind);
+        }
+
+        function setLoading(isLoading) {
+            runButton.disabled = isLoading;
+            runSpinner.classList.toggle("hidden", !isLoading);
+            runButtonLabel.textContent = isLoading ? "Running analysis..." : "Run Analysis";
+            if (isLoading) {
+                setStatus("Running analysis...", "loading");
+            }
+        }
+
+        function updateSeverityLabel() {
+            severityValue.textContent = `${Math.round(Number(severityInput.value) * 100)}%`;
+        }
+
+        function syncFormState() {
+            const queryType = queryTypeInput.value;
+            const isForecast = queryType === "forecast";
+            const isShock = queryType === "shock";
+
+            yearWrapper.classList.toggle("hidden", isForecast);
+            limitWrapper.classList.toggle("hidden", isForecast);
+            severityWrapper.classList.toggle("hidden", !isShock);
+            forecastOptions.classList.toggle("hidden", !isForecast);
+
+            yearInput.disabled = isForecast;
+            limitInput.disabled = isForecast;
+            severityInput.disabled = !isShock;
+            metricInput.disabled = !isForecast;
+            periodsInput.disabled = !isForecast;
+            forecastModelInput.disabled = !isForecast;
+
+            countryInput.required = isShock || isForecast;
+            yearInput.required = !isForecast;
+            severityInput.required = isShock;
+            metricInput.required = isForecast;
+            periodsInput.required = isForecast;
+            forecastModelInput.required = isForecast;
+
+            resultsTitle.textContent = isForecast ? "Forecast output" : "Top insights";
+            formHint.textContent = isForecast
+                ? "Forecast uses the full historical trade series for the selected country and sector. Year is not required for this mode."
+                : "Risk and shock use a single-year network snapshot. Shock additionally applies the selected severity to outgoing trade from the chosen country.";
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function formatPercent(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return "n/a";
+            return `${(numeric * 100).toFixed(1)}%`;
+        }
+
+        function formatCompact(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return "n/a";
+            return new Intl.NumberFormat(undefined, {
+                notation: "compact",
+                maximumFractionDigits: 2,
+            }).format(numeric);
+        }
+
+        function formatSectorLabel(sector) {
+            if (!sector || sector === "all") return "All sectors";
+            return `${sector.charAt(0).toUpperCase()}${sector.slice(1)} sector`;
+        }
+
+        function averageConfidence(insights) {
+            if (!insights.length) return 0;
+            const total = insights.reduce((sum, item) => sum + (Number(item.confidence) || 0), 0);
+            return total / insights.length;
+        }
+
+        function destroyChart(chart) {
+            if (chart) chart.destroy();
+            return null;
+        }
+
+        function setChartEmpty(element, message, visible) {
+            element.textContent = message;
+            element.classList.toggle("hidden", !visible);
+        }
+
+        function updateMetricCards(result) {
+            const insights = Array.isArray(result?.insights) ? result.insights : [];
+            metricInsightCountEl.textContent = String(insights.length);
+            metricLeadCountryEl.textContent = insights[0]?.country || "None";
+            metricAvgConfidenceEl.textContent = formatPercent(averageConfidence(insights));
+
+            const scopeBits = [formatSectorLabel(sectorInput.value)];
+            if (queryTypeInput.value !== "forecast" && yearInput.value) {
+                scopeBits.push(`Year ${yearInput.value}`);
+            }
+            scopeBits.push(queryTypeInput.value.charAt(0).toUpperCase() + queryTypeInput.value.slice(1));
+            metricScopeEl.textContent = scopeBits.join(" | ");
+        }
+
+        function renderSummaryList(result) {
+            const insights = Array.isArray(result?.insights) ? result.insights : [];
+            if (!insights.length) {
+                summaryList.innerHTML = '<div class="empty-state">No data available. Run an analysis to generate summaries.</div>';
+                return;
+            }
+
+            summaryList.innerHTML = insights.slice(0, 3).map((item) => `
+                <div class="summary-item">
+                    <strong>${escapeHtml(item.country)} · ${escapeHtml(formatPercent(item.confidence))} confidence</strong>
+                    <p>${escapeHtml(item.summary)}</p>
+                </div>
+            `).join("");
+        }
+
+        function renderTable(result) {
+            const insights = Array.isArray(result?.insights) ? result.insights : [];
+            if (!insights.length) {
+                tableContainer.className = "empty-state";
+                tableContainer.textContent = "No data available. Try adjusting the query or filters.";
+                return;
+            }
+
+            const isForecast = queryTypeInput.value === "forecast";
+            const rows = insights.map((item) => {
+                const country = escapeHtml(item.country);
+                const score = `<span class="score-pill">${escapeHtml(formatPercent(item.score))}</span>`;
+                const confidence = `<span class="confidence-pill">${escapeHtml(formatPercent(item.confidence))}</span>`;
+                const summary = escapeHtml(item.summary);
+
+                if (isForecast) {
+                    const projections = Array.isArray(item.forecast_values)
+                        ? item.forecast_values.map((point) => `${escapeHtml(point.year)}: ${escapeHtml(formatCompact(point.predicted_value))}`).join("<br>")
+                        : "n/a";
+                    return `
+                        <tr>
+                            <td>${country}</td>
+                            <td><span class="trend-pill">${escapeHtml(item.trend || "stable")}</span></td>
+                            <td>${projections}</td>
+                            <td>${confidence}</td>
+                            <td>${summary}</td>
+                        </tr>
+                    `;
+                }
+
+                return `
+                    <tr>
+                        <td>${country}</td>
+                        <td>${score}</td>
+                        <td>${confidence}</td>
+                        <td>${summary}</td>
+                    </tr>
+                `;
+            }).join("");
+
+            tableContainer.className = "table-scroll";
+            tableContainer.innerHTML = isForecast
+                ? `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Country</th>
+                                <th>Trend</th>
+                                <th>Forecast values</th>
+                                <th>Confidence</th>
+                                <th>Summary</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                `
+                : `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Country</th>
+                                <th>Score</th>
+                                <th>Confidence</th>
+                                <th>Summary</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                `;
+        }
+
+        function renderBarChart(result) {
+            barChart = destroyChart(barChart);
+            barChartTitleEl.textContent = "Score distribution";
+            const insights = Array.isArray(result?.insights) ? result.insights : [];
+            if (typeof Chart === "undefined") {
+                setChartEmpty(barChartEmpty, "Chart.js is unavailable in this browser session.", true);
+                return;
+            }
+            if (!insights.length) {
+                setChartEmpty(barChartEmpty, "No data available for the score chart.", true);
+                return;
+            }
+
+            const label = queryTypeInput.value === "shock"
+                ? "Impact score"
+                : queryTypeInput.value === "risk"
+                    ? "Risk score"
+                    : "Projected change";
+            const isShock = queryTypeInput.value === "shock";
+            const isForecast = queryTypeInput.value === "forecast";
+            const fillColor = isShock
+                ? "rgba(221, 107, 32, 0.86)"
+                : isForecast
+                    ? "rgba(15, 139, 141, 0.82)"
+                    : "rgba(37, 99, 235, 0.84)";
+            const strokeColor = isShock
+                ? "rgba(194, 65, 12, 0.98)"
+                : isForecast
+                    ? "rgba(13, 116, 118, 0.98)"
+                    : "rgba(29, 78, 216, 0.98)";
+
+            barChartTitleEl.textContent = `${label} distribution`;
+            setChartEmpty(barChartEmpty, "", false);
+
+            const options = getCommonChartOptions();
+            options.indexAxis = "y";
+            options.plugins.legend.display = false;
+            options.plugins.tooltip.callbacks = {
+                label: (context) => `${label}: ${context.raw.toFixed(1)}%`,
+            };
+            options.scales = {
+                x: {
+                    alignToPixels: true,
+                    beginAtZero: true,
+                    ticks: {
+                        color: CHART_TEXT_COLOR,
+                        font: { size: 12, weight: "600" },
+                        padding: 8,
+                        callback: (value) => `${value}%`,
+                    },
+                    grid: {
+                        color: CHART_GRID_COLOR,
+                        drawBorder: false,
+                        tickLength: 0,
+                        lineWidth: 1,
+                    },
+                    border: { display: false },
+                },
+                y: {
+                    alignToPixels: true,
+                    ticks: {
+                        color: CHART_TEXT_COLOR,
+                        font: { size: 13, weight: "700" },
+                        padding: 10,
+                    },
+                    grid: { display: false, drawBorder: false },
+                    border: { display: false },
+                },
+            };
+
+            barChart = new Chart(barChartCanvas.getContext("2d"), {
+                type: "bar",
+                data: {
+                    labels: insights.map((item) => item.country),
+                    datasets: [{
+                        label,
+                        data: insights.map((item) => Number(item.score) * 100),
+                        borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: strokeColor,
+                        backgroundColor: fillColor,
+                        hoverBackgroundColor: strokeColor,
+                        maxBarThickness: 26,
+                        categoryPercentage: 0.84,
+                        barPercentage: 0.88,
+                    }],
+                },
+                options,
+            });
+        }
+
+        function renderTrendChart(result) {
+            trendChart = destroyChart(trendChart);
+            const insight = Array.isArray(result?.insights) ? result.insights[0] : null;
+            if (typeof Chart === "undefined") {
+                setChartEmpty(trendChartEmpty, "Chart.js is unavailable in this browser session.", true);
+                return;
+            }
+            if (queryTypeInput.value !== "forecast" || !insight) {
+                setChartEmpty(trendChartEmpty, "Run a forecast query to render the trend line.", true);
+                return;
+            }
+
+            const history = Array.isArray(insight.history_values) ? insight.history_values : [];
+            const forecast = Array.isArray(insight.forecast_values) ? insight.forecast_values : [];
+            if (!history.length || !forecast.length) {
+                setChartEmpty(trendChartEmpty, "Forecast data is incomplete for charting.", true);
+                return;
+            }
+
+            setChartEmpty(trendChartEmpty, "", false);
+            const labels = [...history.map((item) => item.year), ...forecast.map((item) => item.year)];
+            const actualData = [...history.map((item) => item.value), ...forecast.map(() => null)];
+            const forecastLine = [
+                ...history.slice(0, -1).map(() => null),
+                history[history.length - 1].value,
+                ...forecast.map((item) => item.predicted_value),
+            ];
+
+            const options = getCommonChartOptions();
+            options.plugins.legend.position = "bottom";
+            options.scales = {
+                y: {
+                    alignToPixels: true,
+                    ticks: {
+                        color: CHART_TEXT_COLOR,
+                        font: { size: 12, weight: "600" },
+                        padding: 8,
+                        callback: (value) => formatCompact(value),
+                    },
+                    grid: {
+                        color: CHART_GRID_COLOR,
+                        drawBorder: false,
+                        tickLength: 0,
+                        lineWidth: 1,
+                    },
+                    border: { display: false },
+                },
+                x: {
+                    alignToPixels: true,
+                    ticks: {
+                        color: CHART_TEXT_COLOR,
+                        font: { size: 12, weight: "600" },
+                        padding: 8,
+                        maxRotation: 0,
+                    },
+                    grid: {
+                        color: "rgba(226, 232, 240, 0.52)",
+                        drawBorder: false,
+                        lineWidth: 1,
+                    },
+                    border: { display: false },
+                },
+            };
+
+            trendChart = new Chart(trendChartCanvas.getContext("2d"), {
+                type: "line",
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: `Historical ${insight.metric}`,
+                            data: actualData,
+                            borderColor: "rgba(37, 99, 235, 0.98)",
+                            backgroundColor: "rgba(37, 99, 235, 0.16)",
+                            pointBackgroundColor: "rgba(37, 99, 235, 0.98)",
+                            pointBorderColor: "#ffffff",
+                            fill: false,
+                            spanGaps: true,
+                            cubicInterpolationMode: "monotone",
+                        },
+                        {
+                            label: "Forecast",
+                            data: forecastLine,
+                            borderColor: "rgba(15, 139, 141, 0.98)",
+                            backgroundColor: "rgba(15, 139, 141, 0.16)",
+                            pointBackgroundColor: "rgba(15, 139, 141, 0.98)",
+                            pointBorderColor: "#ffffff",
+                            borderDash: [8, 6],
+                            fill: false,
+                            spanGaps: true,
+                            cubicInterpolationMode: "monotone",
+                        },
+                    ],
+                },
+                options,
+            });
+        }
+
+        function renderDashboard(result) {
+            lastResult = result;
+            updateMetricCards(result);
+            renderSummaryList(result);
+            renderTable(result);
+            renderBarChart(result);
+            renderTrendChart(result);
+            jsonOutput.textContent = JSON.stringify(result, null, 2);
+        }
+
+        function buildEndpointUrl(pathName) {
+            const parsed = new URL(apiUrlInput.value.trim());
+            parsed.pathname = pathName;
+            parsed.search = "";
+            parsed.hash = "";
+            return parsed.toString();
+        }
+
+        function updateGraphToggleState() {
+            if (!latestShockScores.size && currentGraphMode === "affected") {
+                currentGraphMode = "full";
+            }
+
+            fullNetworkBtn.classList.toggle("active", currentGraphMode === "full");
+            affectedNetworkBtn.classList.toggle("active", currentGraphMode === "affected");
+            affectedNetworkBtn.disabled = latestShockScores.size === 0;
+        }
+
+        function getGraphParams() {
+            const params = new URLSearchParams();
+            params.set("sector", sectorInput.value);
+            params.set("max_edges", "140");
+            if (queryTypeInput.value !== "forecast" && yearInput.value) {
+                params.set("year", String(Number(yearInput.value)));
+            }
+            return params;
+        }
+
+        async function loadGraph() {
+            const token = ++graphLoadToken;
+            setGraphStatus("Loading network", "loading");
+
+            const response = await fetch(`${buildEndpointUrl("/graph")}?${getGraphParams().toString()}`);
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.detail || "Graph request failed.");
+            }
+            if (token !== graphLoadToken) {
+                return;
+            }
+
+            latestGraphData = data;
+            graphScopeEl.textContent = `Year ${data.year} | ${formatSectorLabel(data.sector)} | ${data.edges.length} strongest edges shown`;
+            setGraphStatus(currentGraphMode === "affected" && latestShockScores.size ? "Affected network ready" : "Network ready", "success");
+            renderGraph();
+        }
+
+        async function loadGraphSafe() {
+            try {
+                await loadGraph();
+            } catch (error) {
+                latestGraphData = { nodes: [], edges: [], year: null, sector: sectorInput.value };
+                d3.select(graphSvgEl).selectAll("*").remove();
+                graphScopeEl.textContent = "No graph data available for the current filters.";
+                setGraphStatus(error.message, "error");
+            }
+        }
+
+        function getVisibleGraphData() {
+            const nodes = Array.isArray(latestGraphData.nodes) ? latestGraphData.nodes.map((node) => ({ ...node })) : [];
+            const edges = Array.isArray(latestGraphData.edges) ? latestGraphData.edges.map((edge) => ({ ...edge })) : [];
+            if (currentGraphMode !== "affected" || latestShockScores.size === 0) {
+                return { ...latestGraphData, nodes, edges };
+            }
+
+            const nodeById = new Map(nodes.map((node) => [node.id, node]));
+            const visibleEdges = edges.filter((edge) => latestShockScores.has(edge.source) || latestShockScores.has(edge.target));
+            const visibleIds = new Set();
+            visibleEdges.forEach((edge) => {
+                visibleIds.add(edge.source);
+                visibleIds.add(edge.target);
+            });
+            latestShockScores.forEach((_, country) => {
+                if (nodeById.has(country)) visibleIds.add(country);
+            });
+
+            return {
+                year: latestGraphData.year,
+                sector: latestGraphData.sector,
+                nodes: [...visibleIds].map((id) => nodeById.get(id)).filter(Boolean),
+                edges: visibleEdges,
+            };
+        }
+
+        function createSqrtScale(values, minimum, maximum) {
+            const numeric = values.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0);
+            if (!numeric.length) return () => (minimum + maximum) / 2;
+            const domainMin = d3.min(numeric);
+            const domainMax = d3.max(numeric);
+            if (domainMin === domainMax) return () => (minimum + maximum) / 2;
+            return d3.scaleSqrt().domain([domainMin, domainMax]).range([minimum, maximum]);
+        }
+
+        function resolveNodeId(endpoint) {
+            return typeof endpoint === "string" ? endpoint : endpoint.id;
+        }
+
+        function edgeTouchesAffected(edge) {
+            return latestShockScores.has(resolveNodeId(edge.source)) || latestShockScores.has(resolveNodeId(edge.target));
+        }
+
+        function moveTooltip(event) {
+            tooltipEl.style.left = `${event.clientX + 16}px`;
+            tooltipEl.style.top = `${event.clientY + 16}px`;
+        }
+
+        function showTooltip(event, html) {
+            tooltipEl.innerHTML = html;
+            tooltipEl.style.opacity = "1";
+            moveTooltip(event);
+        }
+
+        function hideTooltip() {
+            tooltipEl.style.opacity = "0";
+        }
+
+        function renderGraph() {
+            const svg = d3.select(graphSvgEl);
+            svg.selectAll("*").remove();
+            const graphData = getVisibleGraphData();
+
+            if (!graphData.nodes.length || !graphData.edges.length) {
+                const width = Math.max(graphStageEl.clientWidth, 320);
+                const height = 620;
+                svg.attr("viewBox", `0 0 ${width} ${height}`);
+                svg.append("text")
+                    .attr("x", width / 2)
+                    .attr("y", height / 2)
+                    .attr("text-anchor", "middle")
+                    .attr("fill", "#66758a")
+                    .attr("font-size", "16")
+                    .text(currentGraphMode === "affected"
+                        ? "No affected subnetwork is visible in the current snapshot."
+                        : "No data available for the current graph view.");
+                return;
+            }
+
+            const width = Math.max(graphStageEl.clientWidth, 320);
+            const height = 620;
+            svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+            const root = svg.append("g");
+            svg.call(
+                d3.zoom()
+                    .scaleExtent([0.45, 3])
+                    .on("zoom", (event) => root.attr("transform", event.transform))
+            );
+
+            const nodes = graphData.nodes.map((node) => ({
+                ...node,
+                affected_score: Number(latestShockScores.get(node.id) || 0),
+            }));
+            const links = graphData.edges.map((edge) => ({ ...edge }));
+            const nodeRadius = createSqrtScale(nodes.map((node) => node.total_trade), 7, 25);
+            const edgeWidth = createSqrtScale(links.map((edge) => edge.weight), 1.2, 6.8);
+
+            const simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(links).id((node) => node.id).distance(currentGraphMode === "affected" ? 108 : 86).strength(0.16))
+                .force("charge", d3.forceManyBody().strength(currentGraphMode === "affected" ? -250 : -180))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collision", d3.forceCollide().radius((node) => nodeRadius(node.total_trade) + 6));
+
+            const link = root.append("g")
+                .attr("stroke-linecap", "round")
+                .selectAll("line")
+                .data(links)
+                .join("line")
+                .attr("stroke", (edge) => edgeTouchesAffected(edge) ? "rgba(221, 107, 32, 0.42)" : "rgba(37, 99, 235, 0.24)")
+                .attr("stroke-width", (edge) => edgeWidth(edge.weight))
+                .on("mousemove", (event, edge) => {
+                    showTooltip(
+                        event,
+                        `<strong>${escapeHtml(resolveNodeId(edge.source))} -> ${escapeHtml(resolveNodeId(edge.target))}</strong><br>Trade value: ${escapeHtml(formatCompact(edge.weight))}`
+                    );
+                })
+                .on("mouseleave", hideTooltip);
+
+            const node = root.append("g")
+                .selectAll("circle")
+                .data(nodes)
+                .join("circle")
+                .attr("r", (item) => nodeRadius(item.total_trade))
+                .attr("fill", (item) => item.affected_score > 0 ? "rgba(221, 107, 32, 0.92)" : "rgba(37, 99, 235, 0.9)")
+                .attr("stroke", "rgba(255, 255, 255, 0.94)")
+                .attr("stroke-width", 2)
+                .style("cursor", "grab")
+                .on("mousemove", (event, item) => {
+                    const shockLine = item.affected_score > 0 ? `<br>Impact score: ${escapeHtml(formatPercent(item.affected_score))}` : "";
+                    showTooltip(
+                        event,
+                        `<strong>${escapeHtml(item.id)}</strong><br>Total trade: ${escapeHtml(formatCompact(item.total_trade))}${shockLine}`
+                    );
+                })
+                .on("mouseleave", hideTooltip);
+
+            const labelIds = new Set(
+                nodes
+                    .slice()
+                    .sort((left, right) => (right.affected_score || right.total_trade) - (left.affected_score || left.total_trade))
+                    .slice(0, Math.min(currentGraphMode === "affected" ? 12 : 8, nodes.length))
+                    .map((node) => node.id)
+            );
+
+            const labels = root.append("g")
+                .selectAll("text")
+                .data(nodes.filter((item) => labelIds.has(item.id)))
+                .join("text")
+                .attr("font-size", 11)
+                .attr("fill", "#16212d")
+                .attr("stroke", "rgba(255, 255, 255, 0.96)")
+                .attr("stroke-width", 3)
+                .attr("paint-order", "stroke")
+                .text((item) => item.id);
+
+            const drag = d3.drag()
+                .on("start", (event, nodeItem) => {
+                    if (!event.active) simulation.alphaTarget(0.25).restart();
+                    nodeItem.fx = nodeItem.x;
+                    nodeItem.fy = nodeItem.y;
+                })
+                .on("drag", (event, nodeItem) => {
+                    nodeItem.fx = event.x;
+                    nodeItem.fy = event.y;
+                })
+                .on("end", (event, nodeItem) => {
+                    if (!event.active) simulation.alphaTarget(0);
+                    nodeItem.fx = null;
+                    nodeItem.fy = null;
+                });
+
+            node.call(drag);
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", (edge) => edge.source.x)
+                    .attr("y1", (edge) => edge.source.y)
+                    .attr("x2", (edge) => edge.target.x)
+                    .attr("y2", (edge) => edge.target.y);
+
+                node
+                    .attr("cx", (item) => item.x)
+                    .attr("cy", (item) => item.y);
+
+                labels
+                    .attr("x", (item) => item.x + nodeRadius(item.total_trade) + 4)
+                    .attr("y", (item) => item.y + 4);
+            });
+        }
+
+        async function submitQuery(event) {
+            event.preventDefault();
+            const queryType = queryTypeInput.value;
+            const isForecast = queryType === "forecast";
+            const isShock = queryType === "shock";
+            const payload = {
+                query_type: queryType,
+                sector: sectorInput.value,
+            };
+
+            const country = countryInput.value.trim();
+            if (country) payload.country = country;
+            if (!isForecast && yearInput.value) payload.year = Number(yearInput.value);
+            if (!isForecast && limitInput.value) payload.limit = Number(limitInput.value);
+            if (isShock) payload.severity = Number(severityInput.value);
+            if (isForecast) {
+                payload.metric = metricInput.value;
+                payload.periods = Number(periodsInput.value);
+                payload.forecast_model = forecastModelInput.value;
+            }
+
+            setLoading(true);
+            try {
+                const response = await fetch(apiUrlInput.value.trim(), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || "Query failed.");
+                }
+
+                renderDashboard(data);
+                setStatus("Analysis complete", "success");
+
+                if (isShock) {
+                    latestShockScores = new Map((data.insights || []).map((item) => [item.country, Number(item.score) || 0]));
+                    currentGraphMode = "affected";
+                } else {
+                    latestShockScores = new Map();
+                    currentGraphMode = "full";
+                }
+
+                updateGraphToggleState();
+                await loadGraph();
+            } catch (error) {
+                renderDashboard({ agent: "trade", insights: [] });
+                jsonOutput.textContent = JSON.stringify({ error: error.message }, null, 2);
+                tableContainer.className = "empty-state";
+                tableContainer.textContent = error.message;
+                summaryList.innerHTML = '<div class="empty-state">No data available. Review the error and try again.</div>';
+                setStatus(error.message, "error");
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        form.addEventListener("submit", submitQuery);
+        queryTypeInput.addEventListener("change", () => {
+            syncFormState();
+            if (queryTypeInput.value !== "shock") {
+                latestShockScores = new Map();
+                currentGraphMode = "full";
+                updateGraphToggleState();
+            }
+            loadGraphSafe();
+        });
+        sectorInput.addEventListener("change", loadGraphSafe);
+        yearInput.addEventListener("change", () => {
+            if (queryTypeInput.value !== "forecast") loadGraphSafe();
+        });
+        apiUrlInput.addEventListener("change", loadGraphSafe);
+        severityInput.addEventListener("input", updateSeverityLabel);
+
+        fullNetworkBtn.addEventListener("click", () => {
+            currentGraphMode = "full";
+            updateGraphToggleState();
+            renderGraph();
+            setGraphStatus("Network ready", "success");
+        });
+
+        affectedNetworkBtn.addEventListener("click", () => {
+            if (!latestShockScores.size) return;
+            currentGraphMode = "affected";
+            updateGraphToggleState();
+            renderGraph();
+            setGraphStatus("Affected network ready", "success");
+        });
+
+        window.addEventListener("resize", () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = window.setTimeout(() => {
+                renderBarChart(lastResult);
+                renderTrendChart(lastResult);
+                if (latestGraphData.nodes.length) renderGraph();
+            }, 140);
+        });
+
+        updateSeverityLabel();
+        syncFormState();
+        updateGraphToggleState();
+        renderDashboard(lastResult);
+        loadGraphSafe();
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
