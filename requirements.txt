@@ -1,0 +1,18 @@
+# Trade Intelligence Module - pinned runtime dependencies.
+# Verified working set on Python 3.11.
+
+# Data and numerics
+pandas==2.3.2
+numpy==2.3.2
+pyarrow==25.0.1
+
+# Graph analysis
+networkx==3.5
+
+# Forecasting
+statsmodels==0.14.6
+
+# API layer
+fastapi==0.135.2
+pydantic==2.12.5
+uvicorn==0.42.0

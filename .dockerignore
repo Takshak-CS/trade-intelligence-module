@@ -1,0 +1,8 @@
+dataset/
+.git/
+__pycache__/
+*.pyc
+.venv/
+venv/
+tests/
+.pytest_cache/

@@ -17,6 +17,14 @@ env/
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE and local tooling
 .vscode/
 .idea/
+.claude/
+
+# Parquet cache - regenerate with: python scripts/build_cache.py
+# Small enough (~25 MB) to commit if you prefer shipping it to teammates.
+cache/
+
+# Test artifacts
+.pytest_cache/

@@ -188,7 +188,23 @@
         input,
         select {
             padding: 12px 14px;
+            font-size: 15px;
+            line-height: 1.4;
             transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+        }
+
+        /* The native dropdown popup does not inherit the select's font in
+           Chrome on Windows, which left the option list unreadably small.
+           These properties have to be set on the options themselves. */
+        select option,
+        select optgroup {
+            font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+            font-size: 15px;
+            font-weight: 500;
+            line-height: 1.6;
+            padding: 10px 12px;
+            color: var(--text);
+            background-color: #ffffff;
         }
 
         input:focus,
@@ -667,6 +683,9 @@
                             <option value="risk">Risk</option>
                             <option value="shock">Shock</option>
                             <option value="forecast">Forecast</option>
+                            <option value="leverage">Leverage</option>
+                            <option value="blocs">Trade blocs</option>
+                            <option value="fragility">Sector fragility</option>
                         </select>
                     </div>
 
@@ -1022,38 +1041,69 @@
             severityValue.textContent = `${Math.round(Number(severityInput.value) * 100)}%`;
         }
 
+        // Query types where naming a country switches from a ranked network view
+        // to that country's own profile. Leaving it blank ranks everyone.
+        const PROFILE_QUERY_TYPES = new Set(["risk", "leverage", "blocs", "fragility"]);
+
+        const RESULT_TITLES = {
+            risk: "Top insights",
+            shock: "Affected countries",
+            forecast: "Forecast output",
+            leverage: "Dependence asymmetry",
+            blocs: "Trade blocs",
+            fragility: "Sector fragility",
+        };
+
+        const FORM_HINTS = {
+            risk: "Ranks countries by structural exposure in the trade network. Name a country to get its profile and rank instead.",
+            shock: "Cuts the chosen country's exports by the selected severity and propagates the loss downstream through the network.",
+            forecast: "Uses the full historical trade series for the selected country and sector. Year is not required for this mode.",
+            leverage: "Finds the most lopsided trade relationships: who routes a large share of their trade through a partner that barely notices them. Name a country for its leverage position.",
+            blocs: "Detects trading blocs with Louvain community detection on actual trade flows. Name a country to see which bloc it falls into.",
+            fragility: "Compares energy, agriculture, and electronics to find where supply is hardest to substitute. Name a country for its sector profile. The sector selector does not apply here.",
+        };
+
         function syncFormState() {
             const queryType = queryTypeInput.value;
             const isForecast = queryType === "forecast";
             const isShock = queryType === "shock";
+            const isRisk = queryType === "risk";
+            const isFragility = queryType === "fragility";
 
             yearWrapper.classList.toggle("hidden", isForecast);
             limitWrapper.classList.toggle("hidden", isForecast);
             severityWrapper.classList.toggle("hidden", !isShock);
-            shockOptions.classList.toggle("hidden", !isShock);
+            shockOptions.classList.toggle("hidden", !(isShock || isRisk));
             forecastOptions.classList.toggle("hidden", !isForecast);
 
             yearInput.disabled = isForecast;
             limitInput.disabled = isForecast;
             severityInput.disabled = !isShock;
             stepsInput.disabled = !isShock;
-            topNPartnersInput.disabled = !isShock;
             propagationFactorInput.disabled = !isShock;
+            // Partner count drives the concentration term in risk scoring, so it
+            // belongs to risk queries as much as to shock ones.
+            topNPartnersInput.disabled = !(isShock || isRisk);
             metricInput.disabled = !isForecast;
             periodsInput.disabled = !isForecast;
             forecastModelInput.disabled = !isForecast;
 
+            // Fragility always compares sectors against each other, so selecting
+            // a single sector would be meaningless.
+            sectorInput.disabled = isFragility;
+
             countryInput.required = isShock || isForecast;
+            countryInput.placeholder = PROFILE_QUERY_TYPES.has(queryType)
+                ? "Optional — blank ranks all countries"
+                : "China or CHN";
             yearInput.required = !isForecast;
             severityInput.required = isShock;
             metricInput.required = isForecast;
             periodsInput.required = isForecast;
             forecastModelInput.required = isForecast;
 
-            resultsTitle.textContent = isForecast ? "Forecast output" : "Top insights";
-            formHint.textContent = isForecast
-                ? "Forecast uses the full historical trade series for the selected country and sector. Year is not required for this mode."
-                : "Risk and shock use a single-year network snapshot. Shock additionally applies the selected severity to outgoing trade from the chosen country.";
+            resultsTitle.textContent = RESULT_TITLES[queryType] || "Top insights";
+            formHint.textContent = FORM_HINTS[queryType] || "";
         }
 
         function escapeHtml(value) {
@@ -1107,11 +1157,20 @@
             metricLeadCountryEl.textContent = insights[0]?.country || "None";
             metricAvgConfidenceEl.textContent = formatPercent(averageConfidence(insights));
 
-            const scopeBits = [formatSectorLabel(sectorInput.value)];
-            if (queryTypeInput.value !== "forecast" && yearInput.value) {
-                scopeBits.push(`Year ${yearInput.value}`);
+            // Read the scope back from the response rather than the form, so the
+            // cards describe what was actually answered even if the form has
+            // been edited since the query ran.
+            const metadata = result?.metadata || {};
+            const queryType = metadata.query_type || queryTypeInput.value;
+
+            const scopeBits = [formatSectorLabel(metadata.sector || sectorInput.value)];
+            if (metadata.year) {
+                scopeBits.push(`Year ${metadata.year}`);
             }
-            scopeBits.push(queryTypeInput.value.charAt(0).toUpperCase() + queryTypeInput.value.slice(1));
+            if (metadata.country) {
+                scopeBits.push(metadata.country);
+            }
+            scopeBits.push(queryType.charAt(0).toUpperCase() + queryType.slice(1));
             metricScopeEl.textContent = scopeBits.join(" | ");
         }
 
@@ -1124,11 +1183,94 @@
 
             summaryList.innerHTML = insights.slice(0, 3).map((item) => `
                 <div class="summary-item">
-                    <strong>${escapeHtml(item.country)} � ${escapeHtml(formatPercent(item.confidence))} confidence</strong>
+                    <strong>${escapeHtml(item.country)} · ${escapeHtml(formatPercent(item.confidence))} confidence</strong>
                     <p>${escapeHtml(item.summary)}</p>
                 </div>
             `).join("");
         }
+
+        function scorePill(value) {
+            return `<span class="score-pill">${escapeHtml(formatPercent(value))}</span>`;
+        }
+
+        function confidencePill(value) {
+            return `<span class="confidence-pill">${escapeHtml(formatPercent(value))}</span>`;
+        }
+
+        function plainNumber(value, digits = 0) {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? numeric.toFixed(digits) : "n/a";
+        }
+
+        // Each query type answers a different question, so each gets the columns
+        // that make its answer readable. The summary column always comes last.
+        const TABLE_COLUMNS = {
+            forecast: [
+                { label: "Country", render: (item) => escapeHtml(item.country) },
+                { label: "Trend", render: (item) => `<span class="trend-pill">${escapeHtml(item.trend || "stable")}</span>` },
+                {
+                    label: "Forecast values",
+                    render: (item) => Array.isArray(item.forecast_values)
+                        ? item.forecast_values.map((point) => `${escapeHtml(point.year)}: ${escapeHtml(formatCompact(point.predicted_value))}`).join("<br>")
+                        : "n/a",
+                },
+                { label: "Confidence", render: (item) => confidencePill(item.confidence) },
+            ],
+            leverage: [
+                { label: "Country", render: (item) => escapeHtml(item.country) },
+                {
+                    label: "Depends on",
+                    render: (item) => escapeHtml(item.leverage_holder || item.most_critical_partner || "-"),
+                },
+                {
+                    label: "Asymmetry",
+                    render: (item) => item.asymmetry !== undefined
+                        ? scorePill(item.asymmetry)
+                        : `<span class="score-pill">${escapeHtml(plainNumber(item.net_leverage, 2))}</span>`,
+                },
+                {
+                    label: "Imbalance",
+                    render: (item) => item.exposure_ratio !== undefined
+                        ? `${escapeHtml(plainNumber(item.exposure_ratio))}x`
+                        : `${escapeHtml(String(item.partners_dominated ?? "-"))} dominated / ${escapeHtml(String(item.partners_dependent_on ?? "-"))} exposed`,
+                },
+                { label: "Confidence", render: (item) => confidencePill(item.confidence) },
+            ],
+            blocs: [
+                { label: "Bloc", render: (item) => escapeHtml(item.bloc_name || item.country) },
+                {
+                    label: "Members",
+                    render: (item) => escapeHtml(String(item.member_count ?? item.bloc_size ?? "-")),
+                },
+                {
+                    label: "World trade",
+                    render: (item) => scorePill(item.world_trade_share ?? item.score),
+                },
+                {
+                    label: "Internal trade",
+                    render: (item) => escapeHtml(formatPercent(item.mean_internal_share ?? item.internal_trade_share)),
+                },
+                { label: "Confidence", render: (item) => confidencePill(item.confidence) },
+            ],
+            fragility: [
+                { label: "Country", render: (item) => escapeHtml(item.country) },
+                { label: "Sector", render: (item) => escapeHtml(item.sector || "-") },
+                { label: "Suppliers", render: (item) => escapeHtml(String(item.supplier_count ?? "-")) },
+                {
+                    label: "Top supplier",
+                    render: (item) => item.top_supplier
+                        ? `${escapeHtml(item.top_supplier)} (${escapeHtml(formatPercent(item.top_supplier_share))})`
+                        : "-",
+                },
+                { label: "Fragility", render: (item) => scorePill(item.score) },
+                { label: "Confidence", render: (item) => confidencePill(item.confidence) },
+            ],
+            default: [
+                { label: "Country", render: (item) => escapeHtml(item.country) },
+                { label: "Score", render: (item) => scorePill(item.score) },
+                { label: "Confidence", render: (item) => confidencePill(item.confidence) },
+            ],
+        };
 
         function renderTable(result) {
             const insights = Array.isArray(result?.insights) ? result.insights : [];
@@ -1138,72 +1280,45 @@
                 return;
             }
 
-            const isForecast = queryTypeInput.value === "forecast";
+            const queryType = result?.metadata?.query_type || queryTypeInput.value;
+            const columns = (TABLE_COLUMNS[queryType] || TABLE_COLUMNS.default)
+                .concat([{ label: "Summary", render: (item) => escapeHtml(item.summary) }]);
+
+            const header = columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join("");
             const rows = insights.map((item) => {
-                const country = escapeHtml(item.country);
-                const score = `<span class="score-pill">${escapeHtml(formatPercent(item.score))}</span>`;
-                const confidence = `<span class="confidence-pill">${escapeHtml(formatPercent(item.confidence))}</span>`;
-                const summary = escapeHtml(item.summary);
-
-                if (isForecast) {
-                    const projections = Array.isArray(item.forecast_values)
-                        ? item.forecast_values.map((point) => `${escapeHtml(point.year)}: ${escapeHtml(formatCompact(point.predicted_value))}`).join("<br>")
-                        : "n/a";
-                    return `
-                        <tr>
-                            <td>${country}</td>
-                            <td><span class="trend-pill">${escapeHtml(item.trend || "stable")}</span></td>
-                            <td>${projections}</td>
-                            <td>${confidence}</td>
-                            <td>${summary}</td>
-                        </tr>
-                    `;
-                }
-
-                return `
-                    <tr>
-                        <td>${country}</td>
-                        <td>${score}</td>
-                        <td>${confidence}</td>
-                        <td>${summary}</td>
-                    </tr>
-                `;
+                const cells = columns.map((column) => {
+                    let value;
+                    try {
+                        value = column.render(item);
+                    } catch (error) {
+                        value = "n/a";
+                    }
+                    return `<td>${value === undefined || value === null ? "n/a" : value}</td>`;
+                }).join("");
+                return `<tr>${cells}</tr>`;
             }).join("");
 
             tableContainer.className = "table-scroll";
-            tableContainer.innerHTML = isForecast
-                ? `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Country</th>
-                                <th>Trend</th>
-                                <th>Forecast values</th>
-                                <th>Confidence</th>
-                                <th>Summary</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows}</tbody>
-                    </table>
-                `
-                : `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Country</th>
-                                <th>Score</th>
-                                <th>Confidence</th>
-                                <th>Summary</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows}</tbody>
-                    </table>
-                `;
+            tableContainer.innerHTML = `
+                <table>
+                    <thead><tr>${header}</tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
         }
+
+        const CHART_TITLES = {
+            risk: "Risk score distribution",
+            shock: "Impact by country",
+            leverage: "Dependence asymmetry",
+            blocs: "Share of world trade",
+            fragility: "Fragility by country and sector",
+        };
 
         function renderBarChart(result) {
             barChart = destroyChart(barChart);
-            barChartTitleEl.textContent = "Score distribution";
+            const queryType = result?.metadata?.query_type || queryTypeInput.value;
+            barChartTitleEl.textContent = CHART_TITLES[queryType] || "Score distribution";
             const insights = Array.isArray(result?.insights) ? result.insights : [];
             if (typeof Chart === "undefined") {
                 setChartEmpty(barChartEmpty, "Chart.js is unavailable in this browser session.", true);
@@ -1214,25 +1329,34 @@
                 return;
             }
 
-            const label = queryTypeInput.value === "shock"
-                ? "Impact score"
-                : queryTypeInput.value === "risk"
-                    ? "Risk score"
-                    : "Projected change";
-            const isShock = queryTypeInput.value === "shock";
-            const isForecast = queryTypeInput.value === "forecast";
-            const fillColor = isShock
-                ? "rgba(221, 107, 32, 0.86)"
-                : isForecast
-                    ? "rgba(15, 139, 141, 0.82)"
-                    : "rgba(37, 99, 235, 0.84)";
-            const strokeColor = isShock
-                ? "rgba(194, 65, 12, 0.98)"
-                : isForecast
-                    ? "rgba(13, 116, 118, 0.98)"
-                    : "rgba(29, 78, 216, 0.98)";
+            const SERIES_LABELS = {
+                risk: "Risk score",
+                shock: "Impact score",
+                forecast: "Projected change",
+                leverage: "Dependence asymmetry",
+                blocs: "Share of world trade",
+                fragility: "Fragility score",
+            };
+            const SERIES_COLORS = {
+                risk: ["rgba(37, 99, 235, 0.84)", "rgba(29, 78, 216, 0.98)"],
+                shock: ["rgba(221, 107, 32, 0.86)", "rgba(194, 65, 12, 0.98)"],
+                forecast: ["rgba(15, 139, 141, 0.82)", "rgba(13, 116, 118, 0.98)"],
+                leverage: ["rgba(147, 51, 153, 0.84)", "rgba(112, 26, 117, 0.98)"],
+                blocs: ["rgba(13, 148, 96, 0.84)", "rgba(6, 112, 72, 0.98)"],
+                fragility: ["rgba(190, 40, 72, 0.84)", "rgba(150, 22, 52, 0.98)"],
+            };
 
-            barChartTitleEl.textContent = `${label} distribution`;
+            const label = SERIES_LABELS[queryType] || "Score";
+            const [fillColor, strokeColor] = SERIES_COLORS[queryType] || SERIES_COLORS.risk;
+
+            // Fragility returns one row per country and sector, so the country
+            // name alone would repeat and collide on the axis.
+            const barLabels = insights.map((item) => (
+                queryType === "fragility" && item.sector
+                    ? `${item.country} (${item.sector})`
+                    : item.country
+            ));
+
             setChartEmpty(barChartEmpty, "", false);
 
             const options = getCommonChartOptions();
@@ -1274,7 +1398,7 @@
             barChart = new Chart(barChartCanvas.getContext("2d"), {
                 type: "bar",
                 data: {
-                    labels: insights.map((item) => item.country),
+                    labels: barLabels,
                     datasets: [{
                         label,
                         data: insights.map((item) => Number(item.score) * 100),
@@ -1299,7 +1423,8 @@
                 setChartEmpty(trendChartEmpty, "Chart.js is unavailable in this browser session.", true);
                 return;
             }
-            if (queryTypeInput.value !== "forecast" || !insight) {
+            const queryType = result?.metadata?.query_type || queryTypeInput.value;
+            if (queryType !== "forecast" || !insight) {
                 setChartEmpty(trendChartEmpty, "Run a forecast query to render the trend line.", true);
                 return;
             }
@@ -1665,8 +1790,16 @@
             if (isShock) {
                 payload.severity = Number(severityInput.value);
                 payload.steps = Number(stepsInput.value);
-                payload.top_n_partners = Number(topNPartnersInput.value);
                 payload.propagation_factor = Number(propagationFactorInput.value);
+            }
+            // Partner count shapes the concentration term the risk score uses,
+            // so risk queries need to send it too.
+            if (isShock || queryType === "risk") {
+                payload.top_n_partners = Number(topNPartnersInput.value);
+            }
+            // Fragility compares every sector, so a single sector would be ignored.
+            if (queryType === "fragility") {
+                delete payload.sector;
             }
             if (isForecast) {
                 payload.metric = metricInput.value;

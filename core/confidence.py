@@ -85,9 +85,15 @@ def combine_forecast_confidence_assessment(
 
 
 def data_completeness_score(data_quality: Optional[Mapping[str, float]]) -> tuple[float, str]:
-    """Score completeness using required-field, value, and quantity availability."""
+    """Score completeness using required-field, value, and quantity availability.
+
+    When no quality record exists the score is neutral rather than perfect.
+    Claiming full confidence about data that was never measured would assert a
+    fact the module has not checked, which is exactly the failure this
+    confidence system is meant to prevent.
+    """
     if not data_quality:
-        return 1.0, "Confidence is supported by complete trade records in the selected slice."
+        return 0.5, "Data completeness could not be assessed for this slice."
 
     required_availability = float(data_quality.get("required_field_availability", 1.0))
     value_availability = float(data_quality.get("value_availability", 1.0))
