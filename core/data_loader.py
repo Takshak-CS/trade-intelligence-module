@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 
+from core import baci_cache
 from core.sector_mapper import (
     baci_sector_mask,
     filter_trade_frame_by_sector,
@@ -21,15 +23,36 @@ BACI_CHUNKSIZE = 250_000
 BACI_YEAR_CACHE: dict[tuple[str, int, str], pd.DataFrame] = {}
 
 
+def cache_directory() -> Path:
+    """Location of the precomputed parquet cache.
+
+    Overridable with TRADE_CACHE_DIR so a container can mount the cache
+    somewhere other than the working directory.
+    """
+    return Path(os.environ.get("TRADE_CACHE_DIR", baci_cache.DEFAULT_CACHE_DIR))
+
+
+def cache_ready() -> bool:
+    """Return True when the parquet cache can serve queries."""
+    return baci_cache.cache_available(cache_directory())
+
+
 
 def load_trade_data(
     csv_path: str | Path,
     year: Optional[int] = None,
     sector: Optional[str] = "all",
 ) -> pd.DataFrame:
-    """Load trade data from a normalized CSV or a BACI dataset directory."""
+    """Load trade data from the parquet cache, a BACI directory, or a CSV."""
     source = Path(csv_path)
     selected_sector = normalize_sector(sector)
+
+    if cache_ready():
+        cache_dir = cache_directory()
+        selected_year = baci_cache.latest_cached_year(cache_dir) if year is None else int(year)
+        if selected_year in baci_cache.cached_years(cache_dir):
+            return baci_cache.load_year(cache_dir, selected_year, sector=selected_sector)
+
     if is_baci_directory(source):
         selected_year = latest_year(source) if year is None else int(year)
         return load_baci_year(source, selected_year, sector=selected_sector)
@@ -50,9 +73,20 @@ def load_country_time_series(
     country: str,
     sector: Optional[str] = "all",
 ) -> dict:
-    """Load a yearly country time series from a normalized CSV or BACI directory."""
+    """Load a yearly country time series from the cache, a BACI directory, or a CSV."""
     source = Path(csv_path)
     selected_sector = normalize_sector(sector)
+
+    if cache_ready():
+        cache_dir = cache_directory()
+        _, country_name = baci_cache.resolve_country(cache_dir, country)
+        return {
+            "country": country_name,
+            "sector": selected_sector,
+            "data_quality": baci_cache.load_quality(cache_dir, year=None, sector=selected_sector),
+            "time_series": baci_cache.load_country_series(cache_dir, country_name, sector=selected_sector),
+        }
+
     if is_baci_directory(source):
         return load_baci_country_time_series(source, country, sector=selected_sector)
 
@@ -127,6 +161,9 @@ def latest_year(data_or_source: pd.DataFrame | str | Path) -> int:
             raise ValueError("Cannot determine the latest year from an empty dataset.")
         return int(data_or_source["year"].max())
 
+    if cache_ready():
+        return baci_cache.latest_cached_year(cache_directory())
+
     source = Path(data_or_source)
     if is_baci_directory(source):
         years = available_years(source)
@@ -145,6 +182,22 @@ def is_baci_directory(source: str | Path) -> bool:
     """Return True when the source is a BACI directory with yearly files."""
     path = Path(source)
     return path.is_dir() and any(path.glob(BACI_FILE_GLOB))
+
+
+
+def can_resolve_countries(source: str | Path) -> bool:
+    """Return True when country names, ISO codes, and numeric codes can be resolved."""
+    return cache_ready() or is_baci_directory(source)
+
+
+
+def coverage_years(source: str | Path) -> list[int]:
+    """List every year this deployment can answer for, cache or raw files."""
+    if cache_ready():
+        return baci_cache.cached_years(cache_directory())
+    if is_baci_directory(source):
+        return available_years(source)
+    return []
 
 
 
@@ -274,6 +327,9 @@ def load_baci_country_time_series(
 
 def resolve_baci_country(directory: str | Path, country: str) -> tuple[int, str]:
     """Resolve a country name, ISO code, or numeric code to a BACI country code."""
+    if cache_ready():
+        return baci_cache.resolve_country(cache_directory(), country)
+
     dataset_dir = Path(directory)
     country_codes = _load_country_codes_cached(str(dataset_dir)).copy()
     country_text = str(country).strip()
