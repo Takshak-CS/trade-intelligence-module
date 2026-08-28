@@ -165,8 +165,34 @@ curl -X POST http://127.0.0.1:8000/query \
   -d '{"query_type":"shock","country":"China","severity":0.5,"year":2024,"limit":5}'
 ```
 
-Country can be a name, ISO2, ISO3, or BACI numeric code — `China`, `CN`, `CHN`,
-and `156` all resolve to the same country.
+### Country identifiers
+
+Country accepts a name, ISO2, ISO3, BACI numeric code, or a common alias.
+`China`, `CN`, `CHN`, and `156` all resolve to the same country.
+
+Two things about BACI are worth knowing, because both look like bugs otherwise:
+
+- **BACI numeric codes are not ISO 3166 numeric codes.** India is `699` in BACI,
+  not `356`. Prefer ISO3 or a name.
+- **BACI uses formal UN labels** that nobody types: `USA` not "United States",
+  `Rep. of Korea` not "South Korea", `Russian Federation` not "Russia",
+  `Türkiye` not "Turkey", `China, Hong Kong SAR` not "Hong Kong". Common
+  aliases for these are mapped automatically, and an unrecognised name comes
+  back with suggestions rather than a bare failure.
+
+Taiwan resolves to `Other Asia, nes`, the residual category UN Comtrade reports
+its trade under. That is the conventional reading, but it is a residual and not
+an exact match — worth stating if a result turns on it.
+
+### A note on source data encoding
+
+The CEPII country code file ships double-encoded, so four names arrive mangled:
+Côte d'Ivoire, Curaçao, Saint Barthélemy, and Türkiye. The loader repairs this. If you
+have a cache built before this was handled, fix it without a full rebuild:
+
+```bash
+python scripts/repair_cache_encoding.py
+```
 
 ## Docker
 
@@ -212,6 +238,7 @@ trade_intelligence_module/
   scripts/
     build_cache.py         one-time parquet precompute
     fetch_metadata.py      World Bank GDP and population
+    repair_cache_encoding.py  fixes double-encoded names in an existing cache
   frontend/index.html      dashboard
   tests/                   pytest suite
 ```

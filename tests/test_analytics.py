@@ -382,3 +382,129 @@ def test_more_propagation_steps_lower_confidence(simple_graph):
     shallow = build_confidence_assessment(None, simple_graph, "A", propagation_steps=1)
     deep = build_confidence_assessment(None, simple_graph, "A", propagation_steps=5)
     assert deep["score"] < shallow["score"]
+
+
+# --------------------------------------------------------------------------
+# Country identifier resolution
+# --------------------------------------------------------------------------
+
+
+def test_alias_map_targets_real_iso3_codes():
+    """Every alias must point at a code the BACI table actually contains.
+
+    A typo in the alias map would surface as a confusing "not found" for a
+    country the module can in fact answer, so this checks the map against the
+    real table whenever the cache is present.
+    """
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built; alias targets cannot be validated.")
+
+    codes = baci_cache.load_countries(cache_directory())
+    known = set(codes["country_iso3"].str.upper())
+    unknown = {
+        alias: target
+        for alias, target in baci_cache.COUNTRY_ALIASES.items()
+        if target not in known
+    }
+    assert not unknown, f"aliases pointing at codes BACI does not have: {unknown}"
+
+
+@pytest.mark.parametrize(
+    "identifier, expected",
+    [
+        ("United States", "USA"),
+        ("US", "USA"),
+        ("south korea", "Rep. of Korea"),
+        ("North Korea", "Dem. People's Rep. of Korea"),
+        ("Russia", "Russian Federation"),
+        ("Vietnam", "Viet Nam"),
+        ("Turkey", "Türkiye"),
+        ("Hong Kong", "China, Hong Kong SAR"),
+        ("UK", "United Kingdom"),
+        ("Czech Republic", "Czechia"),
+        ("Burma", "Myanmar"),
+    ],
+)
+def test_common_names_resolve_to_baci_labels(identifier, expected):
+    """BACI's formal labels are not what callers type; aliases bridge the gap."""
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built; country resolution needs the code table.")
+
+    _, resolved = baci_cache.resolve_country(cache_directory(), identifier)
+    assert resolved == expected
+
+
+def test_unknown_country_error_suggests_alternatives():
+    """A dead-end error is useless to an orchestrator; suggest a next step."""
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built; country resolution needs the code table.")
+
+    with pytest.raises(ValueError, match="Did you mean"):
+        baci_cache.resolve_country(cache_directory(), "Indai")
+
+
+def test_iso_numeric_confusion_is_called_out():
+    """BACI numeric codes are not ISO 3166 numeric; say so rather than 'not found'."""
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built; country resolution needs the code table.")
+
+    # 356 is India's ISO 3166 numeric code. India's BACI code is 699.
+    with pytest.raises(ValueError, match="own numeric codes"):
+        baci_cache.resolve_country(cache_directory(), "356")
+
+
+def test_year_out_of_range_names_the_coverage():
+    from core.data_loader import year_out_of_range_message
+
+    contiguous = year_out_of_range_message(1994, list(range(1995, 2025)))
+    assert "1995-2024" in contiguous
+
+    sparse = year_out_of_range_message(2030, [2019, 2020, 2023])
+    assert "2019, 2020, 2023" in sparse
+
+    empty = year_out_of_range_message(2000, [])
+    assert "build_cache" in empty
+
+
+def test_mojibake_repair_fixes_double_encoded_names():
+    """The CEPII country file ships double-encoded; four names depend on this."""
+    from core.data_loader import repair_mojibake
+
+    assert repair_mojibake("TÃ¼rkiye") == "Türkiye"
+    assert repair_mojibake("CÃ´te d'Ivoire") == "Côte d'Ivoire"
+    assert repair_mojibake("CuraÃ§ao") == "Curaçao"
+    assert repair_mojibake("Saint BarthÃ©lemy") == "Saint Barthélemy"
+
+
+def test_mojibake_repair_leaves_clean_text_alone():
+    """Correctly encoded names, and plain ASCII, must pass through untouched."""
+    from core.data_loader import repair_mojibake
+
+    for name in ["India", "USA", "China, Hong Kong SAR", "Türkiye", "Curaçao"]:
+        assert repair_mojibake(name) == name
+
+
+def test_cache_country_names_are_not_mojibake():
+    """Guards against a cache built before the encoding fix slipping back in."""
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built.")
+
+    names = baci_cache.load_countries(cache_directory())["country_name"].astype(str)
+    # U+00C3 is the tell-tale first character of UTF-8-read-as-Latin-1.
+    suspect = [name for name in names if "Ã" in name]
+    assert not suspect, f"double-encoded names still in the cache: {suspect}"

@@ -12,6 +12,7 @@ the whole module.
 
 from __future__ import annotations
 
+import difflib
 import json
 import threading
 from collections import OrderedDict
@@ -248,8 +249,71 @@ def load_countries(cache_dir: str | Path) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
+# BACI labels countries with formal or abbreviated UN names, several of which
+# nobody types from memory: "USA" rather than "United States", "Rep. of Korea"
+# rather than "South Korea", "Türkiye" rather than "Turkey". An orchestrator
+# passing ordinary country names would fail on all of these, so common usage is
+# mapped onto ISO3, which the code table already carries.
+COUNTRY_ALIASES: dict[str, str] = {
+    "united states": "USA",
+    "united states of america": "USA",
+    "us": "USA",
+    "u.s.": "USA",
+    "u.s.a.": "USA",
+    "america": "USA",
+    "south korea": "KOR",
+    "korea": "KOR",
+    "republic of korea": "KOR",
+    "north korea": "PRK",
+    "democratic people's republic of korea": "PRK",
+    "russia": "RUS",
+    "vietnam": "VNM",
+    "turkey": "TUR",
+    "turkiye": "TUR",
+    "hong kong": "HKG",
+    "macao": "MAC",
+    "macau": "MAC",
+    # BACI follows UN Comtrade, which reports Taiwan's trade under the residual
+    # category "Other Asia, nes" rather than as a separate reporter. That
+    # category is overwhelmingly Taiwan in practice and is how trade economists
+    # read it, but it is a residual and not an exact match - worth stating if a
+    # result turns on it.
+    "taiwan": "S19",
+    "chinese taipei": "S19",
+    "laos": "LAO",
+    "bolivia": "BOL",
+    "moldova": "MDA",
+    "tanzania": "TZA",
+    "brunei": "BRN",
+    "czech republic": "CZE",
+    "ivory coast": "CIV",
+    "cote d'ivoire": "CIV",
+    "dr congo": "COD",
+    "drc": "COD",
+    "democratic republic of the congo": "COD",
+    "congo-kinshasa": "COD",
+    "congo-brazzaville": "COG",
+    "republic of the congo": "COG",
+    "iran": "IRN",
+    "syria": "SYR",
+    "venezuela": "VEN",
+    "uk": "GBR",
+    "great britain": "GBR",
+    "britain": "GBR",
+    "england": "GBR",
+    "uae": "ARE",
+    "emirates": "ARE",
+    "burma": "MMR",
+    "cape verde": "CPV",
+    "swaziland": "SWZ",
+    "east timor": "TLS",
+    "macedonia": "MKD",
+    "north macedonia": "MKD",
+}
+
+
 def resolve_country(cache_dir: str | Path, country: str) -> tuple[int, str]:
-    """Resolve a country name, ISO2, ISO3, or numeric code against the cache."""
+    """Resolve a country name, ISO2, ISO3, alias, or numeric code against the cache."""
     codes = load_countries(cache_dir)
     text = str(country).strip()
 
@@ -261,12 +325,58 @@ def resolve_country(cache_dir: str | Path, country: str) -> tuple[int, str]:
             matched = codes[codes["country_iso3"].str.upper() == text.upper()]
         if matched.empty:
             matched = codes[codes["country_iso2"].str.upper() == text.upper()]
+        if matched.empty:
+            alias = COUNTRY_ALIASES.get(text.casefold())
+            if alias:
+                matched = codes[codes["country_iso3"].str.upper() == alias]
 
     if matched.empty:
-        raise ValueError(f"Country '{country}' was not found in the country code table.")
+        raise ValueError(country_not_found_message(codes, text))
 
     row = matched.iloc[0]
     return int(row["country_code"]), str(row["country_name"])
+
+
+def country_not_found_message(codes: pd.DataFrame, text: str) -> str:
+    """Build an error that helps the caller find the right identifier.
+
+    Two traps make a bare "not found" unhelpful here. BACI numeric codes are
+    not ISO 3166 numeric codes for every country (India is 699, not 356), so
+    the obvious guess fails silently. And several BACI names carry qualifiers
+    ("China, Hong Kong SAR", "Other Asia, nes") that nobody types from memory.
+    Suggesting near matches turns a dead end into a next step.
+    """
+    if str(text).strip().isdigit():
+        return (
+            f"Country code '{text}' was not found. Note that BACI uses its own numeric "
+            f"codes, which differ from ISO 3166 numeric for many countries. "
+            f"An ISO2, ISO3, or country name is usually the safer identifier."
+        )
+
+    candidates = difflib.get_close_matches(
+        str(text).casefold(),
+        [name.casefold() for name in codes["country_name"]],
+        n=3,
+        cutoff=0.6,
+    )
+    lookup = {name.casefold(): name for name in codes["country_name"]}
+    suggestions = [lookup[candidate] for candidate in candidates if candidate in lookup]
+
+    if not suggestions:
+        # Fall back to substring matching, which catches qualified names like
+        # "Hong Kong" -> "China, Hong Kong SAR" that fuzzy ratio misses.
+        contains = codes.loc[
+            codes["country_name"].str.contains(str(text).strip(), case=False, regex=False),
+            "country_name",
+        ]
+        suggestions = contains.head(3).tolist()
+
+    if suggestions:
+        return f"Country '{text}' was not found. Did you mean: {', '.join(suggestions)}?"
+    return (
+        f"Country '{text}' was not found in the BACI country table. "
+        f"Accepted identifiers are country name, ISO2, ISO3, or BACI numeric code."
+    )
 
 
 def known_countries(cache_dir: str | Path, sector: str = "all") -> list[str]:

@@ -49,9 +49,15 @@ def load_trade_data(
 
     if cache_ready():
         cache_dir = cache_directory()
-        selected_year = baci_cache.latest_cached_year(cache_dir) if year is None else int(year)
-        if selected_year in baci_cache.cached_years(cache_dir):
+        available = baci_cache.cached_years(cache_dir)
+        selected_year = max(available) if year is None else int(year)
+        if selected_year in available:
             return baci_cache.load_year(cache_dir, selected_year, sector=selected_sector)
+        # Only fall through to the raw CSVs if they can actually cover the gap.
+        # Otherwise the caller gets an error naming a directory that may not
+        # even exist, instead of being told what this deployment can answer.
+        if not is_baci_directory(source):
+            raise ValueError(year_out_of_range_message(selected_year, available))
 
     if is_baci_directory(source):
         selected_year = latest_year(source) if year is None else int(year)
@@ -345,7 +351,7 @@ def resolve_baci_country(directory: str | Path, country: str) -> tuple[int, str]
             matched = country_codes[country_codes["country_iso2"].str.upper() == upper_text]
 
     if matched.empty:
-        raise ValueError(f"Country '{country}' was not found in BACI country codes.")
+        raise ValueError(baci_cache.country_not_found_message(country_codes, country_text))
 
     row = matched.iloc[0]
     return int(row["country_code"]), str(row["country_name"])
@@ -382,8 +388,31 @@ def _find_baci_file(directory: Path, year: int) -> Path:
     """Locate the BACI CSV file for a specific year."""
     matches = sorted(directory.glob(f"BACI_HS92_Y{int(year)}_V*.csv"))
     if not matches:
-        raise ValueError(f"No BACI file was found for year {int(year)} in '{directory}'.")
+        raise ValueError(year_out_of_range_message(int(year), available_years(directory)))
     return matches[0]
+
+
+
+def year_out_of_range_message(year: int, available: list[int]) -> str:
+    """Explain a year miss by saying what this deployment can actually answer.
+
+    A bare "no file for 1994" leaves the caller guessing, and an orchestrator
+    has no way to recover from it. Naming the covered range turns the error
+    into something it can retry against.
+    """
+    if not available:
+        return (
+            f"Year {int(year)} is unavailable, and no trade data could be found at all. "
+            f"Build the cache with scripts/build_cache.py or place the BACI CSVs in dataset/."
+        )
+
+    first, last = min(available), max(available)
+    if len(available) == (last - first + 1):
+        coverage = f"{first}-{last}"
+    else:
+        coverage = ", ".join(str(item) for item in available)
+
+    return f"Year {int(year)} is outside the available range. Coverage: {coverage}."
 
 
 
@@ -491,6 +520,26 @@ def _finalize_quality_stats(stats: dict) -> dict:
 
 
 
+def repair_mojibake(text: str) -> str:
+    """Undo one round of UTF-8 bytes having been decoded as Latin-1.
+
+    The CEPII country code file ships double-encoded: the UTF-8 bytes for
+    ``ü`` (C3 BC) were themselves re-encoded as UTF-8, so the file literally
+    contains C3 83 C2 BC and reading it correctly still yields "Türkiye".
+    Four countries are affected -- Côte d'Ivoire, Curaçao, Saint Barthélemy,
+    and Türkiye -- and without this their names are wrong in every API
+    response, dashboard table, and exported report.
+
+    The round trip only succeeds on genuinely double-encoded text, so names
+    that are already correct pass through untouched.
+    """
+    try:
+        return text.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError, AttributeError):
+        return text
+
+
+
 @lru_cache(maxsize=8)
 def _load_country_codes_cached(directory: str) -> pd.DataFrame:
     """Load BACI country code mappings for a dataset directory."""
@@ -502,8 +551,11 @@ def _load_country_codes_cached(directory: str) -> pd.DataFrame:
     country_codes = pd.read_csv(
         matches[0],
         usecols=["country_code", "country_name", "country_iso2", "country_iso3"],
+        encoding="utf-8",
     )
-    country_codes["country_name"] = country_codes["country_name"].astype(str).str.strip()
+    country_codes["country_name"] = (
+        country_codes["country_name"].astype(str).str.strip().map(repair_mojibake)
+    )
     country_codes["country_iso2"] = country_codes["country_iso2"].astype(str).str.strip()
     country_codes["country_iso3"] = country_codes["country_iso3"].astype(str).str.strip()
     return country_codes
