@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import os
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -23,7 +24,13 @@ import pandas as pd
 
 CACHE_VERSION = 1
 DEFAULT_CACHE_DIR = "cache"
-MAX_CACHED_YEARS = 8
+
+# Entries are keyed by (directory, year, sector), so one year costs four slots
+# when all sectors are touched. A cached year-sector frame is roughly 2-6 MB,
+# putting the default around 100 MB at full occupancy, which buys six years of
+# working set. Eight slots -- the original value -- held only two years and
+# thrashed as soon as anything compared three.
+MAX_CACHED_YEARS = int(os.environ.get("TRADE_CACHE_ENTRIES", "24"))
 
 _MEMORY_LOCK = threading.Lock()
 _MEMORY: "OrderedDict[tuple[str, int, str], pd.DataFrame]" = OrderedDict()
