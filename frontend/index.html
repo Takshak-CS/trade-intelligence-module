@@ -1553,11 +1553,31 @@
             return params;
         }
 
-        async function loadGraph() {
+        // The network snapshot depends only on year, sector, and edge cap. Query
+        // type does not change it, so running risk then leverage then blocs on
+        // the same year was refetching an identical graph each time -- about
+        // 0.2s of pure waste per query, comparable to the query itself.
+        let loadedGraphScope = null;
+
+        async function loadGraph({ force = false } = {}) {
+            const scope = getGraphParams().toString();
+            if (!force && scope === loadedGraphScope && latestGraphData.nodes && latestGraphData.nodes.length) {
+                // Same data, possibly a different overlay (shock highlighting),
+                // so re-render without going back to the server.
+                renderGraph();
+                setGraphStatus(
+                    currentGraphMode === "affected" && latestShockScores.size
+                        ? "Affected network ready"
+                        : "Network ready",
+                    "success",
+                );
+                return;
+            }
+
             const token = ++graphLoadToken;
             setGraphStatus("Loading network", "loading");
 
-            const response = await fetch(`${buildEndpointUrl("/graph")}?${getGraphParams().toString()}`);
+            const response = await fetch(`${buildEndpointUrl("/graph")}?${scope}`);
             const data = await response.json();
             if (!response.ok) {
                 throw new Error(data.detail || "Graph request failed.");
@@ -1567,6 +1587,7 @@
             }
 
             latestGraphData = data;
+            loadedGraphScope = scope;
             graphScopeEl.textContent = `Year ${data.year} | ${formatSectorLabel(data.sector)} | ${data.edges.length} strongest edges shown`;
             setGraphStatus(currentGraphMode === "affected" && latestShockScores.size ? "Affected network ready" : "Network ready", "success");
             renderGraph();
@@ -1576,6 +1597,7 @@
             try {
                 await loadGraph();
             } catch (error) {
+                loadedGraphScope = null;
                 latestGraphData = { nodes: [], edges: [], year: null, sector: sectorInput.value };
                 d3.select(graphSvgEl).selectAll("*").remove();
                 graphScopeEl.textContent = "No graph data available for the current filters.";
