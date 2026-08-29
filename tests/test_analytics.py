@@ -9,6 +9,7 @@ up on isolated or degenerate nodes, and silently disagreeing with themselves.
 from __future__ import annotations
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -508,3 +509,83 @@ def test_cache_country_names_are_not_mojibake():
     # U+00C3 is the tell-tale first character of UTF-8-read-as-Latin-1.
     suspect = [name for name in names if "Ã" in name]
     assert not suspect, f"double-encoded names still in the cache: {suspect}"
+
+
+# --------------------------------------------------------------------------
+# Forecasting on degenerate series
+# --------------------------------------------------------------------------
+
+
+def _series(values):
+    """Build a minimal yearly series frame around one metric."""
+    years = list(range(2024 - len(values) + 1, 2025))
+    return pd.DataFrame({"year": years, "exports": values, "imports": values})
+
+
+@pytest.mark.parametrize("model", ["auto", "linear", "arima", "hybrid"])
+@pytest.mark.parametrize(
+    "label, values",
+    [
+        ("all zeros", [0.0] * 30),
+        ("constant", [5.0] * 30),
+        ("single point", [7.0]),
+        ("two points", [1.0, 2.0]),
+        ("ends at zero", [10.0] * 29 + [0.0]),
+        ("zero heavy", [0.0, 0.0, 3.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 0.0] * 3),
+        ("steep decline", [1000.0 - (30 * index) for index in range(30)]),
+    ],
+)
+def test_degenerate_series_produce_usable_forecasts(label, values, model):
+    """Sparse and flat trade series must not yield NaN, inf, or negatives.
+
+    Real BACI data contains all of these shapes -- micro-territories with a
+    handful of non-zero energy years, countries that stop trading a sector
+    entirely. A forecast that returns NaN here would propagate straight into
+    the API response.
+    """
+    from core.forecast import forecast_metric_from_series
+
+    result = forecast_metric_from_series(_series(values), "Testland", metric="exports", periods=3, model=model)
+    predicted = [point["predicted_value"] for point in result["forecast"]]
+
+    assert len(predicted) == 3
+    assert all(np.isfinite(value) for value in predicted), f"{label}/{model}: {predicted}"
+    # Trade value cannot be negative, so the metric bound must hold.
+    assert all(value >= 0 for value in predicted), f"{label}/{model}: {predicted}"
+    assert 0.0 <= result["confidence"] <= 1.0
+
+
+def test_steep_decline_does_not_forecast_negative_trade():
+    """A hard downward trend must clamp at zero, not project negative exports."""
+    from core.forecast import forecast_metric_from_series
+
+    values = [1000.0 - (34 * index) for index in range(30)]
+    result = forecast_metric_from_series(_series(values), "Testland", metric="exports", periods=3, model="linear")
+    assert all(point["predicted_value"] >= 0 for point in result["forecast"])
+
+
+def test_dependency_ratio_forecasts_stay_within_zero_and_one():
+    """Ratios are bounded by definition; the forecast must respect that."""
+    from core.forecast import forecast_metric_from_series
+
+    rising = [index / 30.0 for index in range(30)]
+    frame = pd.DataFrame({"year": range(1995, 2025), "import_dependency_ratio": rising})
+    result = forecast_metric_from_series(
+        frame, "Testland", metric="import_dependency_ratio", periods=5, model="linear"
+    )
+    assert all(0.0 <= point["predicted_value"] <= 1.0 for point in result["forecast"])
+
+
+def test_forecasting_emits_no_warnings_to_stderr():
+    """Non-converging ARIMA fits are handled, so they must not spam the API log."""
+    import warnings as warning_module
+
+    from core.forecast import forecast_metric_from_series
+
+    awkward = _series([0.0, 0.0, 4.0, 0.0, 9.0, 0.0, 0.0, 1.0, 0.0, 0.0, 6.0, 0.0, 0.0, 2.0, 0.0])
+    with warning_module.catch_warnings(record=True) as captured:
+        warning_module.simplefilter("always")
+        forecast_metric_from_series(awkward, "Testland", metric="exports", periods=3, model="auto")
+
+    convergence = [w for w in captured if "converge" in str(w.message).lower()]
+    assert not convergence, f"convergence warnings leaked: {[str(w.message) for w in convergence]}"

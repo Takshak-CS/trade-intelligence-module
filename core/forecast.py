@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Tuple
+import warnings
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from statsmodels.tsa.arima.model import ARIMA
 
 SUPPORTED_METRICS = (
@@ -152,19 +154,38 @@ def _linear_forecast(values: np.ndarray, periods: int) -> Tuple[np.ndarray, floa
     return slope * xf + intercept, float(slope), float(intercept)
 
 
+def _fit_arima(values: np.ndarray, order: Tuple[int, int, int], periods: int) -> Optional[np.ndarray]:
+    """Fit an ARIMA model and forecast, or return None if it cannot.
+
+    Short, flat, and zero-heavy trade series make maximum likelihood fail to
+    converge often -- roughly one series in twenty here. That is a handled
+    condition: callers fall back to the linear trend, and rolling-MAPE model
+    selection scores the fit quality anyway. Left unsuppressed the warning is
+    written to stderr on every such request, which fills the API log with
+    noise an operator cannot act on.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ConvergenceWarning)
+        warnings.simplefilter("ignore", UserWarning)
+        try:
+            fit = ARIMA(
+                values,
+                order=order,
+                enforce_stationarity=False,
+                enforce_invertibility=False,
+            ).fit()
+            return np.asarray(fit.forecast(steps=periods), dtype=float)
+        except Exception:
+            return None
+
+
 def _arima_direct_forecast(values: np.ndarray, periods: int) -> Tuple[np.ndarray, float, float]:
     """Forecast directly with a simple ARIMA model."""
     if len(values) < 8:
         return _linear_forecast(values=values, periods=periods)
-    try:
-        fit = ARIMA(
-            values,
-            order=(1, 1, 1),
-            enforce_stationarity=False,
-            enforce_invertibility=False,
-        ).fit()
-        pred = np.asarray(fit.forecast(steps=periods), dtype=float)
-    except Exception:
+
+    pred = _fit_arima(values, order=(1, 1, 1), periods=periods)
+    if pred is None:
         pred, _, _ = _linear_forecast(values=values, periods=periods)
 
     slope, intercept = np.polyfit(np.arange(len(values), dtype=float), values, 1)
@@ -181,15 +202,10 @@ def _hybrid_forecast(values: np.ndarray, periods: int) -> Tuple[np.ndarray, floa
     if len(values) < 12:
         return trend_pred, slope, intercept
 
-    try:
-        fit = ARIMA(
-            residuals,
-            order=(1, 0, 1),
-            enforce_stationarity=False,
-            enforce_invertibility=False,
-        ).fit()
-        residual_pred = np.asarray(fit.forecast(steps=periods), dtype=float)
-    except Exception:
+    residual_pred = _fit_arima(residuals, order=(1, 0, 1), periods=periods)
+    if residual_pred is None:
+        # No usable residual model means no correction, which leaves the plain
+        # linear trend rather than a worse one.
         residual_pred = np.zeros(periods, dtype=float)
 
     return trend_pred + residual_pred, slope, intercept
