@@ -589,3 +589,112 @@ def test_forecasting_emits_no_warnings_to_stderr():
 
     convergence = [w for w in captured if "converge" in str(w.message).lower()]
     assert not convergence, f"convergence warnings leaked: {[str(w.message) for w in convergence]}"
+
+
+# --------------------------------------------------------------------------
+# Cache memo bounds and thread safety
+# --------------------------------------------------------------------------
+
+
+def test_memo_never_exceeds_its_bound():
+    """The memo must evict, or a long-running service grows without limit.
+
+    Each entry is a year-sector frame of a few megabytes, so an unbounded
+    dict would consume hundreds of megabytes over a sweep of the full
+    history and never give it back.
+    """
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built.")
+
+    baci_cache.clear_memory()
+    cache_dir = cache_directory()
+    years = baci_cache.cached_years(cache_dir)
+
+    requested = 0
+    for year in years[: baci_cache.MAX_CACHED_YEARS + 6]:
+        for sector in ["all", "energy"]:
+            baci_cache.load_year(cache_dir, year, sector)
+            requested += 1
+            assert len(baci_cache._MEMORY) <= baci_cache.MAX_CACHED_YEARS
+
+    assert requested > baci_cache.MAX_CACHED_YEARS, "test did not exceed the bound"
+    assert len(baci_cache._MEMORY) == baci_cache.MAX_CACHED_YEARS
+
+
+def test_memo_evicts_least_recently_used():
+    """A key kept warm must survive eviction that drops colder ones."""
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built.")
+
+    baci_cache.clear_memory()
+    cache_dir = cache_directory()
+    years = baci_cache.cached_years(cache_dir)
+    if len(years) <= baci_cache.MAX_CACHED_YEARS:
+        pytest.skip("Not enough cached years to force eviction.")
+
+    warm = years[0]
+    baci_cache.load_year(cache_dir, warm, "all")
+
+    for year in years[1 : baci_cache.MAX_CACHED_YEARS]:
+        baci_cache.load_year(cache_dir, year, "all")
+        baci_cache.load_year(cache_dir, warm, "all")  # keep touching the warm key
+
+    # Fill past the bound; the warm key should still be resident.
+    for year in years[baci_cache.MAX_CACHED_YEARS :]:
+        baci_cache.load_year(cache_dir, year, "all")
+        baci_cache.load_year(cache_dir, warm, "all")
+
+    resident = {key[1] for key in baci_cache._MEMORY}
+    assert warm in resident
+
+
+def test_concurrent_loads_return_identical_data():
+    """Threads racing the same key must not observe torn or differing frames."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built.")
+
+    baci_cache.clear_memory()
+    cache_dir = cache_directory()
+    year = baci_cache.cached_years(cache_dir)[-1]
+
+    def load(_):
+        frame = baci_cache.load_year(cache_dir, year, "all")
+        return len(frame), float(frame["trade_value"].sum())
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(load, range(24)))
+
+    assert len(set(results)) == 1, f"threads saw differing data: {set(results)}"
+
+
+def test_cached_frames_are_isolated_from_callers():
+    """A caller mutating its copy must not corrupt the shared memo."""
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built.")
+
+    baci_cache.clear_memory()
+    cache_dir = cache_directory()
+    year = baci_cache.cached_years(cache_dir)[-1]
+
+    first = baci_cache.load_year(cache_dir, year, "all")
+    original_total = float(first["trade_value"].sum())
+    first["trade_value"] = 0.0
+    first.drop(first.index[:10], inplace=True)
+
+    second = baci_cache.load_year(cache_dir, year, "all")
+    assert float(second["trade_value"].sum()) == pytest.approx(original_total)
+    assert second.attrs.get("sector") == "all"
