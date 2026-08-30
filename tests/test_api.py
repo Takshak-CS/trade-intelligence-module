@@ -118,11 +118,51 @@ def test_data_path_is_not_accepted_from_callers():
         "/query",
         json={"query_type": "risk", "limit": 1, "data_path": "C:/Windows/win.ini"},
     )
-    # Pydantic ignores the unknown field rather than honouring it; what matters
-    # is that it never reaches the loader.
-    assert response.status_code in {200, 400}
-    if response.status_code == 200:
-        assert "win.ini" not in response.text
+    # Rejected as an unknown field. The 422 echoes the caller's own input back,
+    # which is standard validation behaviour and not a disclosure -- what
+    # matters is that the path never reaches the loader.
+    assert response.status_code == 422
+    assert "data_path" in response.text
+    assert "extra_forbidden" in response.text
+
+
+def test_misspelled_parameter_is_rejected_not_ignored():
+    """A typo must fail loudly rather than silently using the default.
+
+    With Pydantic's default behaviour, "yr" would be dropped and the query
+    answered against the latest year -- a plausible but wrong answer, which is
+    the worst possible outcome for an orchestrator wiring up to this API.
+    """
+    response = client.post("/query", json={"query_type": "risk", "yr": 2020, "limit": 1})
+    assert response.status_code == 422
+    assert "yr" in response.text
+
+
+def test_unknown_fields_are_rejected():
+    response = client.post(
+        "/query",
+        json={"query_type": "risk", "limit": 1, "evil": True, "__proto__": {"x": 1}},
+    )
+    assert response.status_code == 422
+
+
+def test_valid_request_still_accepted_under_strict_extras():
+    """Strictness must not break the fields the dashboard actually sends."""
+    response = client.post(
+        "/query",
+        json={
+            "query_type": "shock",
+            "country": "China",
+            "sector": "all",
+            "year": 2020,
+            "limit": 3,
+            "severity": 0.5,
+            "steps": 3,
+            "top_n_partners": 3,
+            "propagation_factor": 0.7,
+        },
+    )
+    assert response.status_code in {200, 400}, response.text
 
 
 # --------------------------------------------------------------------------

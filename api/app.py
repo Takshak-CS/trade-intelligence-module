@@ -19,7 +19,7 @@ from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agent import trade_agent
 from core import baci_cache
@@ -57,6 +57,13 @@ def configured_origins() -> list[str]:
 
 class TradeQuery(BaseModel):
     """Validated request body for the trade intelligence endpoint."""
+
+    # Reject unknown fields rather than dropping them. Pydantic's default is to
+    # ignore them, which means a caller that misspells a parameter -- "yr"
+    # instead of "year" -- gets a successful response computed against the
+    # default instead of an error. Across four agents wiring up to this API,
+    # a plausible-but-wrong answer is far more expensive than a 422.
+    model_config = ConfigDict(extra="forbid")
 
     query_type: QueryType
     country: Optional[str] = Field(
