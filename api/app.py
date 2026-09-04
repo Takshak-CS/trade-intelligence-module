@@ -221,18 +221,22 @@ def capabilities() -> dict:
             "asymmetry, trading blocs, sector substitutability, and trade trends."
         ),
         "response_envelope": {
-            "agent": "string",
-            "metadata": "object describing the query and the method that answered it",
+            "agent": "trade_intelligence",
+            "metadata": "object: query_type, year, sector, data_quality, method",
             "insights": [
                 {
-                    "country": "string",
+                    "entity_iso3": "string or null, the shared join key across agents",
+                    "entity_name": "string, human-readable label for the same entity",
+                    "claim": "string, one self-contained human-readable finding",
                     "score": "float, sortable, meaning depends on query_type",
-                    "summary": "string, one self-contained human-readable finding",
                     "confidence": "float 0-1",
-                    "confidence_reason": "string explaining the limiting factor",
+                    "reason": "string explaining what limited the confidence",
+                    "evidence": "object, the numbers the claim rests on",
                 }
             ],
         },
+        "join_key": "entity_iso3",
+        "contract": "Team 128 shared four-agent response envelope",
         "query_types": {
             "risk": {
                 "description": "Rank countries by structural exposure in the trade network.",

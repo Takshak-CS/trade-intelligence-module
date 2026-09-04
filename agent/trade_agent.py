@@ -162,14 +162,15 @@ def _execute_risk_query(
         )
 
         insight = build_insight(
-            country=row.country,
+            entity_iso3=_iso3(row.country),
+            entity_name=row.country,
+            claim=summary,
             score=float(row.risk_score),
-            summary=summary,
             confidence=confidence["score"],
-        )
-        insight.update(
-            {
+            reason=confidence["reason"],
+            evidence={
                 "rank": position,
+                "countries_ranked": len(merged),
                 "sector": sector,
                 "pagerank_centrality": float(row.pagerank_centrality),
                 "betweenness_centrality": float(row.betweenness_centrality),
@@ -181,9 +182,8 @@ def _execute_risk_query(
                 "total_exports": _safe_float(getattr(row, "total_exports", None)),
                 "import_dependency_ratio": _safe_float(getattr(row, "import_dependency_ratio", None)),
                 "export_dependency_ratio": _safe_float(getattr(row, "export_dependency_ratio", None)),
-                "confidence_reason": confidence["reason"],
                 "confidence_components": confidence["components"],
-            }
+            },
         )
         insights.append(insight)
 
@@ -195,6 +195,7 @@ def _execute_risk_query(
             year=snapshot_year,
             country=country,
             method="pagerank + betweenness + partner concentration (HHI)",
+            data_quality=data_quality,
             countries_ranked=len(merged),
         ),
     )
@@ -257,22 +258,25 @@ def _execute_shock_query(
         )
 
         insight = build_insight(
-            country=row.country,
+            entity_iso3=_iso3(row.country),
+            entity_name=row.country,
+            claim=summary,
             score=float(row.impact_score),
-            summary=summary,
             confidence=confidence["score"],
-        )
-        insight.update(
-            {
+            reason=confidence["reason"],
+            evidence={
                 "sector": sector,
+                "shock_origin": country,
+                "shock_origin_iso3": _iso3(country),
+                "severity": severity,
                 "impact_score": float(row.impact_score),
                 "applied_export_reduction": float(row.applied_export_reduction),
                 "risk_score": float(row.risk_score),
+                "propagation_steps": propagation_steps,
                 "gdp_exposure": gdp_exposure,
                 "disrupted_trade_usd": _safe_float(getattr(row, "disrupted_trade_usd", None)),
-                "confidence_reason": confidence["reason"],
                 "confidence_components": confidence["components"],
-            }
+            },
         )
         insights.append(insight)
 
@@ -284,6 +288,7 @@ def _execute_shock_query(
             year=snapshot_year,
             country=country,
             method="iterative export-reduction propagation",
+            data_quality=data_quality,
             severity=severity,
             propagation_steps=propagation_steps,
             requested_steps=steps,
@@ -324,13 +329,13 @@ def _execute_leverage_query(
         )
 
         insight = build_insight(
-            country=country,
+            entity_iso3=_iso3(country),
+            entity_name=country,
+            claim=summary,
             score=float(position["net_leverage"]),
-            summary=summary,
             confidence=confidence["score"],
-        )
-        insight.update(
-            {
+            reason=confidence["reason"],
+            evidence={
                 "sector": sector,
                 "leverage_held": float(position["leverage_held"]),
                 "leverage_exposed": float(position["leverage_exposed"]),
@@ -338,12 +343,12 @@ def _execute_leverage_query(
                 "partners_dominated": int(dominated),
                 "partners_dependent_on": int(dependent),
                 "most_critical_partner": critical,
+                "most_critical_partner_iso3": _iso3(critical),
                 "critical_partner_dependence": float(position["critical_partner_dependence"]),
                 "holds_leverage_over": profile["holds_leverage_over"],
                 "vulnerable_to": profile["vulnerable_to"],
-                "confidence_reason": confidence["reason"],
                 "confidence_components": confidence["components"],
-            }
+            },
         )
         insights = [insight]
         pair_count = None
@@ -366,24 +371,24 @@ def _execute_leverage_query(
                 f"rupture that {row.exposed_country} could not. {confidence['reason']}"
             )
             insight = build_insight(
-                country=row.exposed_country,
+                entity_iso3=_iso3(row.exposed_country),
+                entity_name=row.exposed_country,
+                claim=summary,
                 score=float(row.asymmetry),
-                summary=summary,
                 confidence=confidence["score"],
-            )
-            insight.update(
-                {
+                reason=confidence["reason"],
+                evidence={
                     "sector": sector,
                     "leverage_holder": row.leverage_holder,
+                    "leverage_holder_iso3": _iso3(row.leverage_holder),
                     "exposed_country": row.exposed_country,
                     "bilateral_trade": float(row.bilateral_trade),
                     "holder_dependence": float(row.holder_dependence),
                     "exposed_dependence": float(row.exposed_dependence),
                     "asymmetry": float(row.asymmetry),
                     "exposure_ratio": float(row.exposure_ratio),
-                    "confidence_reason": confidence["reason"],
                     "confidence_components": confidence["components"],
-                }
+                },
             )
             insights.append(insight)
 
@@ -395,6 +400,7 @@ def _execute_leverage_query(
             year=snapshot_year,
             country=country,
             method="bilateral dependence asymmetry",
+            data_quality=data_quality,
             pairs_evaluated=pair_count,
             minimum_bilateral_trade=None if country else RANKING_TRADE_FLOOR,
         ),
@@ -437,23 +443,24 @@ def _execute_blocs_query(
             f"Largest members: {format_partner_list(bloc['members'])}. {confidence['reason']}"
         )
         insight = build_insight(
-            country=country,
+            entity_iso3=_iso3(country),
+            entity_name=country,
+            claim=summary,
             score=float(row["internal_trade_share"]),
-            summary=summary,
             confidence=confidence["score"],
-        )
-        insight.update(
-            {
+            reason=confidence["reason"],
+            evidence={
                 "sector": sector,
                 "bloc_id": int(row["bloc_id"]),
                 "bloc_name": str(row["bloc_name"]),
+                "bloc_anchor_iso3": _iso3(row["bloc_name"]),
                 "bloc_size": int(row["bloc_size"]),
                 "internal_trade_share": float(row["internal_trade_share"]),
                 "world_trade_share": bloc_world_share,
                 "bloc_members": list(bloc["all_members"]),
-                "confidence_reason": confidence["reason"],
+                "bloc_member_iso3": [code for code in (_iso3(m) for m in bloc["all_members"]) if code],
                 "confidence_components": confidence["components"],
-            }
+            },
         )
         insights = [insight]
     else:
@@ -472,25 +479,30 @@ def _execute_blocs_query(
                 f"On average {row.mean_internal_share:.1%} of a member's trade stays inside the "
                 f"bloc. Largest members: {format_partner_list(row.members)}. {confidence['reason']}"
             )
+            # A bloc is not a country, so it has no ISO3 of its own. It is
+            # named after its largest member, whose code identifies the anchor
+            # and lets fusion tie the bloc back to a real entity.
             insight = build_insight(
-                country=row.bloc_name,
+                entity_iso3=_iso3(row.bloc_name),
+                entity_name=f"{row.bloc_name} bloc",
+                claim=summary,
                 score=share,
-                summary=summary,
                 confidence=confidence["score"],
-            )
-            insight.update(
-                {
+                reason=confidence["reason"],
+                evidence={
                     "sector": sector,
+                    "entity_kind": "trade_bloc",
                     "bloc_id": int(row.bloc_id),
                     "bloc_name": str(row.bloc_name),
+                    "bloc_anchor_iso3": _iso3(row.bloc_name),
                     "member_count": int(row.member_count),
                     "members": list(row.members),
                     "bloc_members": list(row.all_members),
+                    "bloc_member_iso3": [code for code in (_iso3(m) for m in row.all_members) if code],
                     "world_trade_share": share,
                     "mean_internal_share": float(row.mean_internal_share),
-                    "confidence_reason": confidence["reason"],
                     "confidence_components": confidence["components"],
-                }
+                },
             )
             insights.append(insight)
 
@@ -503,6 +515,7 @@ def _execute_blocs_query(
             year=snapshot_year,
             country=country,
             method="Louvain community detection on the undirected trade projection",
+            data_quality=data_quality,
             bloc_count=int(assignment.attrs.get("bloc_count", 0)),
             modularity=modularity,
             inter_bloc_flows=flows.head(12).to_dict(orient="records"),
@@ -519,9 +532,11 @@ def _execute_fragility_query(
 ) -> dict:
     """Compare sectors to find where supply is hardest to substitute."""
     graphs: Dict[str, nx.DiGraph] = {}
+    sector_quality: Dict[str, dict] = {}
     for sector_name in COMPARABLE_SECTORS:
         sector_data = load_trade_data(data_path, year=snapshot_year, sector=sector_name)
         graphs[sector_name] = build_trade_graph(sector_data, sector=sector_name)
+        sector_quality[sector_name] = dict(sector_data.attrs.get("data_quality") or {})
 
     sector_ranking = rank_sector_fragility(graphs)
 
@@ -537,12 +552,17 @@ def _execute_fragility_query(
                 f"visible to this module. Fragility score {record['fragility_score']:.3f}."
             )
             insight = build_insight(
-                country=country,
+                entity_iso3=_iso3(country),
+                entity_name=country,
+                claim=summary,
                 score=float(record["fragility_score"]),
-                summary=summary,
                 confidence=_fragility_confidence(record),
+                reason=_fragility_reason(record),
+                evidence={
+                    **{key: value for key, value in record.items() if key != "country"},
+                    "top_supplier_iso3": _iso3(record.get("top_supplier")),
+                },
             )
-            insight.update({key: value for key, value in record.items() if key != "country"})
             insights.append(insight)
     else:
         fragility = compute_sector_fragility(graphs, min_sector_imports=RANKING_TRADE_FLOOR)
@@ -557,12 +577,17 @@ def _execute_fragility_query(
                 f"{record['fragility_score']:.3f}."
             )
             insight = build_insight(
-                country=str(record["country"]),
+                entity_iso3=_iso3(record["country"]),
+                entity_name=str(record["country"]),
+                claim=summary,
                 score=float(record["fragility_score"]),
-                summary=summary,
                 confidence=_fragility_confidence(record),
+                reason=_fragility_reason(record),
+                evidence={
+                    **{key: value for key, value in record.items() if key != "country"},
+                    "top_supplier_iso3": _iso3(record.get("top_supplier")),
+                },
             )
-            insight.update({key: value for key, value in record.items() if key != "country"})
             insights.append(insight)
 
     return format_agent_output(
@@ -573,6 +598,7 @@ def _execute_fragility_query(
             year=snapshot_year,
             country=country,
             method="supplier concentration weighted with sector reliance",
+            data_quality={"by_sector": sector_quality},
             sectors_compared=list(COMPARABLE_SECTORS),
             sector_supply_concentration=sector_ranking.to_dict(orient="records"),
             minimum_sector_imports=None if country else RANKING_TRADE_FLOOR,
@@ -651,26 +677,30 @@ def _execute_forecast_query(data_path: str, query: dict, sector: str) -> dict:
     )
 
     insight = build_insight(
-        country=resolved_country,
+        entity_iso3=_iso3(resolved_country),
+        entity_name=resolved_country,
+        claim=summary,
         score=float(projected_change),
-        summary=summary,
         confidence=confidence["score"],
+        reason=confidence["reason"],
+        evidence={
+            "trend": trend_direction,
+            "metric": metric,
+            "periods": periods,
+            "horizon": horizon_text,
+            "sector": sector,
+            "method": forecast_result["method"],
+            "forecast_values": forecast_values,
+            "history_values": history_values,
+            "latest_actual": latest_actual,
+            "forecast_model_scores": forecast_result.get("model_scores", {}),
+            "model_confidence": float(
+                forecast_result.get("model_confidence", forecast_result.get("confidence", 0.0))
+            ),
+            "heuristic_confidence": float(heuristic_confidence["score"]),
+            "confidence_components": confidence["components"],
+        },
     )
-    insight["trend"] = trend_direction
-    insight["metric"] = metric
-    insight["periods"] = periods
-    insight["forecast_values"] = forecast_values
-    insight["history_values"] = history_values
-    insight["latest_actual"] = latest_actual
-    insight["sector"] = sector
-    insight["method"] = forecast_result["method"]
-    insight["forecast_model_scores"] = forecast_result.get("model_scores", {})
-    insight["model_confidence"] = float(
-        forecast_result.get("model_confidence", forecast_result.get("confidence", 0.0))
-    )
-    insight["heuristic_confidence"] = float(heuristic_confidence["score"])
-    insight["confidence_reason"] = confidence["reason"]
-    insight["confidence_components"] = confidence["components"]
 
     return format_agent_output(
         [insight],
@@ -679,6 +709,7 @@ def _execute_forecast_query(data_path: str, query: dict, sector: str) -> dict:
             sector=sector,
             country=resolved_country,
             method=str(forecast_result["method"]),
+            data_quality=time_series_payload.get("data_quality"),
             metric=metric,
             periods=periods,
             horizon=horizon_text,
@@ -709,6 +740,19 @@ def _resolve_country_name(data_path: str, country: object) -> Optional[str]:
         return str(country)
     _, resolved = resolve_baci_country(data_path, str(country))
     return resolved
+
+
+
+def _iso3(name: object) -> Optional[str]:
+    """Resolve an entity name to the ISO3 code the four agents join on.
+
+    Returns None rather than guessing when the name is not a country the
+    crosswalk knows, so the fusion layer skips the row instead of joining it
+    against the wrong entity.
+    """
+    if not name or not cache_ready():
+        return None
+    return baci_cache.iso3_for(cache_directory(), str(name))
 
 
 
@@ -751,6 +795,20 @@ def _enrich_with_economics(
     except (ValueError, KeyError):
         # Enrichment is a bonus, never a reason to fail a query.
         return frame
+
+
+
+def _fragility_reason(record: dict) -> str:
+    """Name the factor limiting confidence in a fragility score."""
+    supplier_count = int(record.get("supplier_count", 0))
+    if supplier_count <= 3:
+        return (
+            "Confidence is most sensitive to the very small number of suppliers this "
+            "score is computed from."
+        )
+    if supplier_count < 20:
+        return "Confidence is most sensitive to the limited supplier base observed for this sector."
+    return "Confidence is supported by a broad observed supplier base for this sector."
 
 
 

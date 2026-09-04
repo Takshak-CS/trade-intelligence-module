@@ -1515,13 +1515,36 @@
             });
         }
 
+        // The API speaks the shared four-agent contract: each insight carries
+        // entity_iso3, entity_name, claim, score, confidence, reason, and an
+        // evidence object holding the query-specific numbers. The renderers
+        // below want those numbers at the top level, so flatten once here
+        // rather than teaching every renderer about the nesting. Contract
+        // fields win over evidence on a name clash.
+        function toDisplayInsight(insight) {
+            return {
+                ...(insight.evidence || {}),
+                ...insight,
+                country: insight.entity_name || insight.country || insight.entity_iso3 || "",
+                summary: insight.claim || insight.summary || "",
+                confidence_reason: insight.reason || insight.confidence_reason || "",
+            };
+        }
+
+        function toDisplayResult(result) {
+            if (!result || !Array.isArray(result.insights)) return result;
+            return { ...result, insights: result.insights.map(toDisplayInsight) };
+        }
+
         function renderDashboard(result) {
             lastResult = result;
-            updateMetricCards(result);
-            renderSummaryList(result);
-            renderTable(result);
-            renderBarChart(result);
-            renderTrendChart(result);
+            const display = toDisplayResult(result);
+            updateMetricCards(display);
+            renderSummaryList(display);
+            renderTable(display);
+            renderBarChart(display);
+            renderTrendChart(display);
+            // Show the real contract response, not the flattened view.
             jsonOutput.textContent = JSON.stringify(result, null, 2);
         }
 
@@ -1845,7 +1868,9 @@
                 setStatus("Analysis complete", "success");
 
                 if (isShock) {
-                    latestShockScores = new Map((data.insights || []).map((item) => [item.country, Number(item.score) || 0]));
+                    latestShockScores = new Map(
+                        (data.insights || []).map((item) => [item.entity_name || item.country, Number(item.score) || 0]),
+                    );
                     currentGraphMode = "affected";
                 } else {
                     latestShockScores = new Map();
