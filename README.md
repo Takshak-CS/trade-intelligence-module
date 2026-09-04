@@ -139,6 +139,20 @@ without knowing which analysis produced them:
 name of the factor that limited it, so a consumer can tell a well-evidenced
 finding from a thin one.
 
+### Requests are strictly validated
+
+Unknown fields are **rejected** with a 422 rather than ignored. A caller that
+misspells a parameter gets an error naming the offending field:
+
+```json
+{"detail": [{"type": "extra_forbidden", "loc": ["body", "yr"],
+             "msg": "Extra inputs are not permitted", "input": 2020}]}
+```
+
+Pydantic's default is to silently drop unknown fields, which would have answered
+that request against the latest year instead. For a caller wiring up to this
+API, a plausible-but-wrong answer costs far more than a rejection.
+
 ### Examples
 
 ```bash

@@ -9,6 +9,7 @@ up on isolated or degenerate nodes, and silently disagreeing with themselves.
 from __future__ import annotations
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -508,3 +509,192 @@ def test_cache_country_names_are_not_mojibake():
     # U+00C3 is the tell-tale first character of UTF-8-read-as-Latin-1.
     suspect = [name for name in names if "Ã" in name]
     assert not suspect, f"double-encoded names still in the cache: {suspect}"
+
+
+# --------------------------------------------------------------------------
+# Forecasting on degenerate series
+# --------------------------------------------------------------------------
+
+
+def _series(values):
+    """Build a minimal yearly series frame around one metric."""
+    years = list(range(2024 - len(values) + 1, 2025))
+    return pd.DataFrame({"year": years, "exports": values, "imports": values})
+
+
+@pytest.mark.parametrize("model", ["auto", "linear", "arima", "hybrid"])
+@pytest.mark.parametrize(
+    "label, values",
+    [
+        ("all zeros", [0.0] * 30),
+        ("constant", [5.0] * 30),
+        ("single point", [7.0]),
+        ("two points", [1.0, 2.0]),
+        ("ends at zero", [10.0] * 29 + [0.0]),
+        ("zero heavy", [0.0, 0.0, 3.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 0.0] * 3),
+        ("steep decline", [1000.0 - (30 * index) for index in range(30)]),
+    ],
+)
+def test_degenerate_series_produce_usable_forecasts(label, values, model):
+    """Sparse and flat trade series must not yield NaN, inf, or negatives.
+
+    Real BACI data contains all of these shapes -- micro-territories with a
+    handful of non-zero energy years, countries that stop trading a sector
+    entirely. A forecast that returns NaN here would propagate straight into
+    the API response.
+    """
+    from core.forecast import forecast_metric_from_series
+
+    result = forecast_metric_from_series(_series(values), "Testland", metric="exports", periods=3, model=model)
+    predicted = [point["predicted_value"] for point in result["forecast"]]
+
+    assert len(predicted) == 3
+    assert all(np.isfinite(value) for value in predicted), f"{label}/{model}: {predicted}"
+    # Trade value cannot be negative, so the metric bound must hold.
+    assert all(value >= 0 for value in predicted), f"{label}/{model}: {predicted}"
+    assert 0.0 <= result["confidence"] <= 1.0
+
+
+def test_steep_decline_does_not_forecast_negative_trade():
+    """A hard downward trend must clamp at zero, not project negative exports."""
+    from core.forecast import forecast_metric_from_series
+
+    values = [1000.0 - (34 * index) for index in range(30)]
+    result = forecast_metric_from_series(_series(values), "Testland", metric="exports", periods=3, model="linear")
+    assert all(point["predicted_value"] >= 0 for point in result["forecast"])
+
+
+def test_dependency_ratio_forecasts_stay_within_zero_and_one():
+    """Ratios are bounded by definition; the forecast must respect that."""
+    from core.forecast import forecast_metric_from_series
+
+    rising = [index / 30.0 for index in range(30)]
+    frame = pd.DataFrame({"year": range(1995, 2025), "import_dependency_ratio": rising})
+    result = forecast_metric_from_series(
+        frame, "Testland", metric="import_dependency_ratio", periods=5, model="linear"
+    )
+    assert all(0.0 <= point["predicted_value"] <= 1.0 for point in result["forecast"])
+
+
+def test_forecasting_emits_no_warnings_to_stderr():
+    """Non-converging ARIMA fits are handled, so they must not spam the API log."""
+    import warnings as warning_module
+
+    from core.forecast import forecast_metric_from_series
+
+    awkward = _series([0.0, 0.0, 4.0, 0.0, 9.0, 0.0, 0.0, 1.0, 0.0, 0.0, 6.0, 0.0, 0.0, 2.0, 0.0])
+    with warning_module.catch_warnings(record=True) as captured:
+        warning_module.simplefilter("always")
+        forecast_metric_from_series(awkward, "Testland", metric="exports", periods=3, model="auto")
+
+    convergence = [w for w in captured if "converge" in str(w.message).lower()]
+    assert not convergence, f"convergence warnings leaked: {[str(w.message) for w in convergence]}"
+
+
+# --------------------------------------------------------------------------
+# Cache memo bounds and thread safety
+# --------------------------------------------------------------------------
+
+
+def test_memo_never_exceeds_its_bound():
+    """The memo must evict, or a long-running service grows without limit.
+
+    Each entry is a year-sector frame of a few megabytes, so an unbounded
+    dict would consume hundreds of megabytes over a sweep of the full
+    history and never give it back.
+    """
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built.")
+
+    baci_cache.clear_memory()
+    cache_dir = cache_directory()
+    years = baci_cache.cached_years(cache_dir)
+
+    requested = 0
+    for year in years[: baci_cache.MAX_CACHED_YEARS + 6]:
+        for sector in ["all", "energy"]:
+            baci_cache.load_year(cache_dir, year, sector)
+            requested += 1
+            assert len(baci_cache._MEMORY) <= baci_cache.MAX_CACHED_YEARS
+
+    assert requested > baci_cache.MAX_CACHED_YEARS, "test did not exceed the bound"
+    assert len(baci_cache._MEMORY) == baci_cache.MAX_CACHED_YEARS
+
+
+def test_memo_evicts_least_recently_used():
+    """A key kept warm must survive eviction that drops colder ones."""
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built.")
+
+    baci_cache.clear_memory()
+    cache_dir = cache_directory()
+    years = baci_cache.cached_years(cache_dir)
+    if len(years) <= baci_cache.MAX_CACHED_YEARS:
+        pytest.skip("Not enough cached years to force eviction.")
+
+    warm = years[0]
+    baci_cache.load_year(cache_dir, warm, "all")
+
+    for year in years[1 : baci_cache.MAX_CACHED_YEARS]:
+        baci_cache.load_year(cache_dir, year, "all")
+        baci_cache.load_year(cache_dir, warm, "all")  # keep touching the warm key
+
+    # Fill past the bound; the warm key should still be resident.
+    for year in years[baci_cache.MAX_CACHED_YEARS :]:
+        baci_cache.load_year(cache_dir, year, "all")
+        baci_cache.load_year(cache_dir, warm, "all")
+
+    resident = {key[1] for key in baci_cache._MEMORY}
+    assert warm in resident
+
+
+def test_concurrent_loads_return_identical_data():
+    """Threads racing the same key must not observe torn or differing frames."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built.")
+
+    baci_cache.clear_memory()
+    cache_dir = cache_directory()
+    year = baci_cache.cached_years(cache_dir)[-1]
+
+    def load(_):
+        frame = baci_cache.load_year(cache_dir, year, "all")
+        return len(frame), float(frame["trade_value"].sum())
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(load, range(24)))
+
+    assert len(set(results)) == 1, f"threads saw differing data: {set(results)}"
+
+
+def test_cached_frames_are_isolated_from_callers():
+    """A caller mutating its copy must not corrupt the shared memo."""
+    from core import baci_cache
+    from core.data_loader import cache_directory, cache_ready
+
+    if not cache_ready():
+        pytest.skip("No cache built.")
+
+    baci_cache.clear_memory()
+    cache_dir = cache_directory()
+    year = baci_cache.cached_years(cache_dir)[-1]
+
+    first = baci_cache.load_year(cache_dir, year, "all")
+    original_total = float(first["trade_value"].sum())
+    first["trade_value"] = 0.0
+    first.drop(first.index[:10], inplace=True)
+
+    second = baci_cache.load_year(cache_dir, year, "all")
+    assert float(second["trade_value"].sum()) == pytest.approx(original_total)
+    assert second.attrs.get("sector") == "all"
