@@ -36,7 +36,7 @@ def test_health_reports_readiness():
     assert response.status_code == 200
 
     payload = response.json()
-    assert payload["agent"] == "trade"
+    assert payload["agent"] == "trade_intelligence"
     assert payload["status"] in {"ok", "degraded"}
     assert isinstance(payload["ready"], bool)
     assert payload["ready"] == (payload["years_available"] > 0)
@@ -47,7 +47,7 @@ def test_capabilities_describes_every_query_type():
     assert response.status_code == 200
 
     payload = response.json()
-    assert payload["agent"] == "trade"
+    assert payload["agent"] == "trade_intelligence"
     assert set(payload["query_types"]) == {
         "risk",
         "shock",
@@ -383,3 +383,24 @@ def test_evidence_carries_the_numbers_behind_the_claim():
     evidence = response.json()["insights"][0]["evidence"]
     for field in ("leverage_holder", "leverage_holder_iso3", "asymmetry", "exposure_ratio"):
         assert field in evidence, f"{field} missing from evidence"
+
+
+@requires_data
+def test_agent_identifier_is_consistent_across_endpoints():
+    """Discovery and results must agree on the name the orchestrator routes on.
+
+    An orchestrator registers an agent from /capabilities, then matches
+    incoming responses by their "agent" field. If those two disagree, every
+    response from this module is silently unattributable -- so this pins all
+    three surfaces to one identifier.
+    """
+    from core.output_formatter import AGENT_NAME
+
+    health = client.get("/health").json()["agent"]
+    capabilities = client.get("/capabilities").json()["agent"]
+    advertised = client.get("/capabilities").json()["response_envelope"]["agent"]
+    result = client.post(
+        "/query", json={"query_type": "risk", "year": latest_available_year(), "limit": 1}
+    ).json()["agent"]
+
+    assert {health, capabilities, advertised, result} == {AGENT_NAME}

@@ -26,6 +26,7 @@ from core import baci_cache
 from core.data_loader import cache_directory, cache_ready, coverage_years, latest_year, load_trade_data
 from core.graph_builder import build_graph_payload, build_trade_graph
 from core.metadata import metadata_available
+from core.output_formatter import AGENT_NAME
 from core.sector_mapper import SUPPORTED_SECTORS
 
 QueryType = Literal["risk", "shock", "forecast", "leverage", "blocs", "fragility"]
@@ -191,7 +192,7 @@ def health() -> dict:
     return {
         "status": "ok" if years else "degraded",
         "ready": bool(years),
-        "agent": "trade",
+        "agent": AGENT_NAME,
         "version": API_VERSION,
         "cache_enabled": cache_ready(),
         "years_available": len(years),
@@ -213,7 +214,7 @@ def capabilities() -> dict:
             countries = []
 
     return {
-        "agent": "trade",
+        "agent": AGENT_NAME,
         "version": API_VERSION,
         "description": (
             "Models international trade as a directed weighted graph and answers "
@@ -221,7 +222,7 @@ def capabilities() -> dict:
             "asymmetry, trading blocs, sector substitutability, and trade trends."
         ),
         "response_envelope": {
-            "agent": "trade_intelligence",
+            "agent": AGENT_NAME,
             "metadata": "object: query_type, year, sector, data_quality, method",
             "insights": [
                 {
