@@ -17,6 +17,7 @@ import json
 import os
 import threading
 from collections import OrderedDict
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -384,6 +385,37 @@ def country_not_found_message(codes: pd.DataFrame, text: str) -> str:
         f"Country '{text}' was not found in the BACI country table. "
         f"Accepted identifiers are country name, ISO2, ISO3, or BACI numeric code."
     )
+
+
+@lru_cache(maxsize=8)
+def _iso3_lookup(cache_dir_key: str) -> dict:
+    """Map every BACI country name to its ISO3 code, case-folded for lookup."""
+    codes = load_countries(cache_dir_key)
+    return {
+        str(name).strip().casefold(): str(iso3).strip().upper()
+        for name, iso3 in zip(codes["country_name"], codes["country_iso3"])
+    }
+
+
+def iso3_for(cache_dir: str | Path, name: str) -> Optional[str]:
+    """Resolve a BACI country name to its ISO3 code.
+
+    ISO3 is the join key the four agents share, so every insight this module
+    emits has to carry one. Returns None when the name is not a country at all,
+    which the caller reports rather than guessing.
+
+    Note that a few BACI entries are UN residual categories with placeholder
+    codes rather than real ISO3 -- "Other Asia, nes" is S19, "Europe EFTA, nes"
+    is R20. Those are passed through as-is: they are the correct identifier for
+    that row in this dataset, and inventing a country code for them would be
+    worse than being explicit.
+    """
+    if not name:
+        return None
+    try:
+        return _iso3_lookup(str(Path(cache_dir).resolve())).get(str(name).strip().casefold())
+    except (ValueError, OSError):
+        return None
 
 
 def known_countries(cache_dir: str | Path, sector: str = "all") -> list[str]:

@@ -26,6 +26,7 @@ from core import baci_cache
 from core.data_loader import cache_directory, cache_ready, coverage_years, latest_year, load_trade_data
 from core.graph_builder import build_graph_payload, build_trade_graph
 from core.metadata import metadata_available
+from core.output_formatter import AGENT_NAME
 from core.sector_mapper import SUPPORTED_SECTORS
 
 QueryType = Literal["risk", "shock", "forecast", "leverage", "blocs", "fragility"]
@@ -191,7 +192,7 @@ def health() -> dict:
     return {
         "status": "ok" if years else "degraded",
         "ready": bool(years),
-        "agent": "trade",
+        "agent": AGENT_NAME,
         "version": API_VERSION,
         "cache_enabled": cache_ready(),
         "years_available": len(years),
@@ -213,7 +214,7 @@ def capabilities() -> dict:
             countries = []
 
     return {
-        "agent": "trade",
+        "agent": AGENT_NAME,
         "version": API_VERSION,
         "description": (
             "Models international trade as a directed weighted graph and answers "
@@ -221,18 +222,22 @@ def capabilities() -> dict:
             "asymmetry, trading blocs, sector substitutability, and trade trends."
         ),
         "response_envelope": {
-            "agent": "string",
-            "metadata": "object describing the query and the method that answered it",
+            "agent": AGENT_NAME,
+            "metadata": "object: query_type, year, sector, data_quality, method",
             "insights": [
                 {
-                    "country": "string",
+                    "entity_iso3": "string or null, the shared join key across agents",
+                    "entity_name": "string, human-readable label for the same entity",
+                    "claim": "string, one self-contained human-readable finding",
                     "score": "float, sortable, meaning depends on query_type",
-                    "summary": "string, one self-contained human-readable finding",
                     "confidence": "float 0-1",
-                    "confidence_reason": "string explaining the limiting factor",
+                    "reason": "string explaining what limited the confidence",
+                    "evidence": "object, the numbers the claim rests on",
                 }
             ],
         },
+        "join_key": "entity_iso3",
+        "contract": "Team 128 shared four-agent response envelope",
         "query_types": {
             "risk": {
                 "description": "Rank countries by structural exposure in the trade network.",

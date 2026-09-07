@@ -111,33 +111,55 @@ Open `http://127.0.0.1:8080`.
 
 ### Response envelope
 
-Every query type returns the same shape, so an orchestrator can fuse results
-without knowing which analysis produced them:
+This module's envelope was adopted as the **shared contract for all four agents**
+in the system, so an orchestrator can fan out and fuse results without knowing
+which analysis produced them:
 
 ```json
 {
-  "agent": "trade",
+  "agent": "trade_intelligence",
   "metadata": {
     "query_type": "leverage",
-    "sector": "all",
     "year": 2024,
+    "sector": "all",
+    "data_quality": { "required_field_availability": 1.0, "value_availability": 1.0 },
     "method": "bilateral dependence asymmetry"
   },
   "insights": [
     {
-      "country": "Bhutan",
-      "score": 0.7358,
-      "summary": "Bhutan routes 73.7% of its trade through India, which routes only 0.13% of its own through Bhutan - a 551x imbalance...",
-      "confidence": 0.72,
-      "confidence_reason": "Confidence is most sensitive to sparse trade connections for this country."
+      "entity_iso3": "PRK",
+      "entity_name": "Dem. People's Rep. of Korea",
+      "claim": "Dem. People's Rep. of Korea routes 92.2% of its trade through China, which routes only 0.04% of its own back - a 2462x imbalance...",
+      "score": 0.9216,
+      "confidence": 0.798,
+      "reason": "Confidence is most sensitive to sparse trade connections for this country.",
+      "evidence": {
+        "leverage_holder": "China",
+        "leverage_holder_iso3": "CHN",
+        "asymmetry": 0.9216,
+        "exposure_ratio": 2462.4
+      }
     }
   ]
 }
 ```
 
-`confidence` is not decoration. Every insight carries a score in [0, 1] plus the
-name of the factor that limited it, so a consumer can tell a well-evidenced
-finding from a thin one.
+Three fields carry the integration weight:
+
+- **`entity_iso3`** is the join key. BACI names, Gleditsch-Ward numerics and FIPS
+  actor codes all resolve to ISO3, which is the only way the fusion layer can
+  tell that several agents are describing the same country. Every insight this
+  module emits carries one.
+- **`confidence` + `reason`** let fusion rank and corroborate instead of blindly
+  concatenating. When two agents disagree, the orchestrator needs to know which
+  is standing on firmer ground.
+- **`evidence`** carries the numbers a claim rests on, so a fused briefing can
+  cite rather than assert.
+
+A few BACI entries are UN residual categories with placeholder codes rather than
+real ISO3 — `Other Asia, nes` is `S19`, `Europe EFTA, nes` is `R20`. Those pass
+through as-is: they are the correct identifier for that row, and inventing a
+country code would be worse than being explicit.
 
 ### Requests are strictly validated
 
