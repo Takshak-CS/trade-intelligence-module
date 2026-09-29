@@ -22,9 +22,9 @@ Thumbs.db
 .idea/
 .claude/
 
-# Parquet cache - regenerate with: python scripts/build_cache.py
-# Small enough (~25 MB) to commit if you prefer shipping it to teammates.
-cache/
+# cache/ is committed on purpose (~21 MB of parquet): it is the only thing a
+# teammate needs to run the module without the 8 GB dataset. Rebuild with
+# python scripts/build_cache.py and commit the result.
 
 # Test artifacts
 .pytest_cache/

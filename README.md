@@ -37,9 +37,27 @@ whole network.
 pip install -r requirements.txt
 ```
 
-### 2. Get the dataset
+### 2. The cache comes with the clone
 
-Download the BACI HS92 release and unpack the yearly CSVs into `dataset/`:
+`cache/` is committed: about 21 MB of parquet precomputed from the 8 GB BACI
+dataset, covering 1995-2024, all four sectors, and 234 countries. It is
+self-contained (it bundles the country code table), so after `git clone` and
+step 1 the whole module runs with no download and no build step.
+
+The cache is what makes queries fast. Without it every query re-parses the
+raw CSVs, and a forecast has to touch all thirty files:
+
+| Query | Without cache | With cache |
+|-------|--------------:|-----------:|
+| risk | 19.1s | 0.25s |
+| shock | 7.0s | 0.43s |
+| forecast (cold) | 314s | 0.19s |
+
+### 3. Optional: rebuild the cache from the raw dataset
+
+Only needed for a new BACI release or a change to `scripts/build_cache.py`.
+Download the BACI HS92 release and unpack the yearly CSVs into `dataset/`
+(about 8 GB, gitignored):
 
 ```text
 dataset/
@@ -50,28 +68,12 @@ dataset/
   product_codes_HS92_V202601.csv
 ```
 
-The dataset is about 8 GB and is gitignored.
-
-### 3. Build the cache
-
 ```bash
 python scripts/build_cache.py
 ```
 
-This makes one pass over each yearly file and writes about 25 MB of parquet into
-`cache/`. It takes roughly 15 minutes and only has to happen once.
-
-**This step is not optional in practice.** Without it every query re-parses the
-raw CSVs, and a forecast has to touch all thirty files:
-
-| Query | Without cache | With cache |
-|-------|--------------:|-----------:|
-| risk | 19.1s | 0.25s |
-| shock | 7.0s | 0.43s |
-| forecast (cold) | 314s | 0.19s |
-
-The cache is self-contained — it bundles the country code table — so a teammate
-who has `cache/` but not the 8 GB `dataset/` can run the whole module.
+This makes one pass over each yearly file and rewrites `cache/`. It takes
+roughly 15 minutes. Commit the new `cache/` so teammates get it on their next pull.
 
 ### 4. Optional: fetch economic metadata
 
@@ -80,8 +82,9 @@ python scripts/fetch_metadata.py
 ```
 
 Pulls GDP and population from the World Bank so shock results can be expressed
-as a share of national output rather than only as a trade share. Everything
-works without it; the enrichment is additive.
+as a share of national output rather than only as a trade share. The committed
+cache already includes this (`cache/country_metadata.parquet`); rerun it only to
+refresh the figures. Everything works without it; the enrichment is additive.
 
 ### 5. Run
 

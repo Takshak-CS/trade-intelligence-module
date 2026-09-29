@@ -1,7 +1,7 @@
 # Trade Intelligence Module - API service image.
 #
-# The 8 GB raw BACI dataset is deliberately NOT baked into the image. Build the
-# parquet cache on the host with `python scripts/build_cache.py`, then mount it:
+# The 8 GB raw BACI dataset is deliberately NOT baked into the image. The
+# parquet cache is committed in cache/, so mount it:
 #
 #   docker build -t trade-intelligence .
 #   docker run -p 8000:8000 -v "$(pwd)/cache:/app/cache:ro" trade-intelligence
